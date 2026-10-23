@@ -31,6 +31,13 @@ private:
     float currentEgt;
     float currentBattery;
 
+    // Erweiterte ECU-Simulationswerte
+    float currentLambda;
+    float currentInjectionMs;
+    float currentIgnitionTiming;
+    float currentKnockRetard;
+    float currentThrottlePct;
+
     void advancePhase();
 };
 

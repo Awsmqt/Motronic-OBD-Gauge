@@ -24,6 +24,8 @@
 #include "KW1281.h"
 #include "Simulator.h"
 #include "DisplayUI.h"
+#include "Logger.h"
+#include "WebDashboard.h"
 
 // Globale Instanzen
 SensorData telemetryData;
@@ -31,6 +33,10 @@ SensorManager sensors;
 KW1281Protocol kw1281;
 MotorSimulator simulator;
 DisplayUI ui;
+DataLogger logger;
+#if ENABLE_WIFI_DASHBOARD
+WebDashboard webDashboard;
+#endif
 
 // Timer für Hauptschleife
 unsigned long lastSensorSampleTime = 0;
@@ -69,6 +75,21 @@ void setup() {
         Serial.println("[Setup] SIMULATOR-MODUS AKTIV - Generiere synthetische Motordaten.");
     #endif
 
+    // 4. SD-Karten Datenlogger initialisieren
+    #if ENABLE_SD_LOGGING
+        bool sdOk = logger.begin();
+        telemetryData.sdCardReady = sdOk;
+        if (sdOk) {
+            Serial.printf("[Setup] SD-Logger aktiv! Datei: %s\n", logger.getFilename().c_str());
+        }
+    #endif
+
+    // 5. WiFi Access-Point & Web-Dashboard (iPhone / Smartphone) starten
+    #if ENABLE_WIFI_DASHBOARD
+        webDashboard.begin();
+        Serial.println("[Setup] WiFi Web-Dashboard bereit.");
+    #endif
+
     Serial.println("[Setup] System betriebsbereit!\n");
 }
 
@@ -87,10 +108,28 @@ void loop() {
             sensors.update(telemetryData);
             kw1281.update(telemetryData);
         #endif
+
+        // Status für SD-Logging aktualisieren
+        telemetryData.sdCardReady = logger.isReady();
+        telemetryData.logLinesWritten = logger.getLogCount();
     }
 
     // --------------------------------------------------------------------------
-    // 2. DISPLAY RENDERING & TOUCH (20 Hz / alle 50ms)
+    // 2. SD-KARTEN DATENLOGGING (1 Hz / zyklisch in RAM-Puffer schreiben)
+    // --------------------------------------------------------------------------
+    #if ENABLE_SD_LOGGING
+        logger.update(telemetryData);
+    #endif
+
+    // --------------------------------------------------------------------------
+    // 3. WIFI WEB-DASHBOARD (iPhone Anfragen bedienen)
+    // --------------------------------------------------------------------------
+    #if ENABLE_WIFI_DASHBOARD
+        webDashboard.update(telemetryData);
+    #endif
+
+    // --------------------------------------------------------------------------
+    // 4. DISPLAY RENDERING & TOUCH (20 Hz / alle 50ms)
     // --------------------------------------------------------------------------
     if (now - lastDisplayRefreshTime >= (1000 / DISPLAY_FPS_TARGET)) {
         lastDisplayRefreshTime = now;
@@ -103,17 +142,18 @@ void loop() {
     }
 
     // --------------------------------------------------------------------------
-    // 3. SERIAL TELEMETRIE LOGGING (1 Hz / alle 1000ms auf USB Konsole)
+    // 5. SERIAL TELEMETRIE LOGGING (1 Hz / alle 1000ms auf USB Konsole)
     // --------------------------------------------------------------------------
     if (now - lastSerialLogTime >= 1000) {
         lastSerialLogTime = now;
-        Serial.printf("[Motor-Status] Boost: %.2f bar | Oel-P: %.1f bar | Oel-T: %.0f C | H2O: %.0f C | LLK: %.1f C | EGT: %.0f C | Batt: %.1f V\n",
+        Serial.printf("[Motor-Status] Boost: %.2f bar | Oel-P: %.1f bar | Oel-T: %.0f C | H2O: %.0f C | LLK: %.1f C | EGT: %.0f C | Lambda: %.3f | Batt: %.1f V\n",
                       telemetryData.boostBar,
                       telemetryData.oilPressureBar,
                       telemetryData.oilTemp,
                       telemetryData.coolantTemp,
                       telemetryData.chargeAirTemp,
                       telemetryData.exhaustTemp,
+                      telemetryData.ecuLambda,
                       telemetryData.batteryVolt);
     }
 }

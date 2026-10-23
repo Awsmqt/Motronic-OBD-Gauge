@@ -28,26 +28,44 @@ Anstatt Platz für eine redundante Drehzahlanzeige zu verschwenden, überwacht d
 
 ---
 
-## 🎨 4 Umschaltbare Display-Design Studien
+## 🎨 7 Umschaltbare Display-Design Studien & Diagnose-Seiten
 
-Durch einfaches Antippen des Touchscreens wechselst du jederzeit nahtlos zwischen **4 spezialisierten Anzeige-Layouts**:
+Durch einfaches Antippen des Touchscreens wechselst du jederzeit nahtlos zwischen **7 spezialisierten Anzeige-Layouts**:
 
-```
-+-----------------------------------+-----------------------------------+
-| 1. HEALTH GRID (6 Kacheln)        | 2. PRESSURE & TEMP (Druck/Temp)   |
-| 2 Drücke (Ladedruck / Öldruck),   | 2 riesige Digitalanzeigen oben    |
-| 4 Temperaturen (Öl/H2O/LLK/EGT),  | (Ladedruck/Öldruck), 4 Bargraphen |
-| Status-Footer mit Bordspannung.   | für Temperaturen unten.           |
-+-----------------------------------+-----------------------------------+
-| 3. OEM+ GOLF 4 VDO LOOK           | 4. MONITOR MATRIX (Statusleisten) |
-| Blaues Backlight mit roten VDO-   | 6 horizontale Parameterleisten    |
-| Runduhren (Ladedruck & Öldruck),  | mit farbigen Alarmschwellen       |
-| zentrales rotes MFA-Display.      | und Min/Max-Wertspeichern.        |
-+-----------------------------------+-----------------------------------+
-```
+1. **HEALTH GRID (6 Kacheln):** 2 Drücke (Ladedruck / Öldruck), 4 Temperaturen (Öl/H2O/LLK/EGT), Status-Footer mit Bordspannung.
+2. **PRESSURE & TEMP (Druck/Temp):** 2 riesige Digitalanzeigen oben (Ladedruck/Öldruck), 4 Bargraphen für Temperaturen unten.
+3. **OEM+ GOLF 4 VDO LOOK:** Blaues Backlight mit roten VDO-Runduhren (Ladedruck & Öldruck) und zentralem MFA-Display.
+4. **MONITOR MATRIX (Statusleisten):** 6 horizontale Parameterleisten mit farbigen Alarmschwellen und Min/Max-Wertspeichern.
+5. **FEHLERSPEICHER (DTC):** Live-Auslesung des Motronic-Fehlerspeichers (z.B. P0565, P1092) mit Status (sporadisch/statisch) und Ein-Klick-Löschfunktion (langes Drücken oder per iPhone).
+6. **TREND-CHART (60 Sekunden Verlauf):** Flüssiges Echtzeit-Diagramm der Temperaturkurven (Öl, Kühlwasser, Ladeluft) im direkten Vergleich.
+7. **ECU LIVE-DATEN (MWB 1-6):** Echtzeit-Balken für Lambda (λ), Einspritzdauer (ms), Zündwinkel (°KW), Klopfrücknahme (°) und Drosselklappe (%).
 
-> [!TIP]
-> **Interaktive Live-Vorschau:** Öffne [`design_study/index.html`](design_study/index.html) im Webbrowser, um alle 4 Themes mit Schiebereglern und Fahrzustands-Presets (Kaltstart, Leerlauf, Volllast, Überhitzung) auszuprobieren!
+---
+
+## 📱 iPhone & Smartphone Web-Dashboard (WiFi)
+
+Das Display erzeugt einen eigenen automotiven **WiFi Access-Point**, sodass du während der Fahrt oder bei der Abstimmung alle Daten direkt auf deinem iPhone in Safari abrufen kannst:
+
+- **Netzwerk:** `VW-1.8T-AGU-Gauge` (Passwort: `motronic18t`)
+- **URL in Safari:** `http://192.168.4.1/`
+- **Features:**
+  - 4 Hz Live-Telemetrie (Ladedruck, Öldruck, Temperaturen, EGT, Lambda, Zündung, Klopfen)
+  - Fehlercodes (DTCs) direkt vom Handy auslesen und mit einem Klick löschen
+  - Peak-Werte (Max Boost, Max EGT, Min Öldruck) per Button zurücksetzen
+  - Display-Theme aus der Ferne umschalten
+  - Unterstützt Apples **"Zum Home-Bildschirm hinzufügen"** (startet im Vollbild ohne Safari-Adressleiste)
+  - Funktioniert überall ohne Internet / ohne App-Installation
+
+---
+
+## 💾 SD-Karten Telemetrie-Logger (CSV)
+
+Der eingebaute SD-Kartenslot des CYD zeichnet alle Motordaten vollautomatisch auf:
+
+- **Format:** Standard-CSV (`/logs/AGU_session_NNNN.csv`) mit 18 Spalten
+- **Aufgezeichnete Daten:** Zeitstempel (ms), Ladedruck, Öldruck, Öltemp, Kühlwasser, Ladeluft, EGT, Bordspannung, Ansaugluft ECU, Last %, Luftmasse (MAF g/s), Drehzahl, Lambda, Einspritzzeit (ms), Zündwinkel, Klopfrücknahme, Drosselklappe %, Alarm-Bitmaske
+- **SD-Schonung:** 10 Zeilen RAM-Pufferung vor jedem Schreibvorgang
+- **Sicherheit:** Automatische Session-Rotation bei 10 MB Dateigröße, Ringspeicher bis 50 Sessions
 
 ---
 
@@ -62,7 +80,7 @@ Durch einfaches Antippen des Touchscreens wechselst du jederzeit nahtlos zwische
 - **Ladelufttemperatur (Charge Air Temp nach LLK):**
   - Zeigt exakt an, wie effizient der Ladeluftkühler arbeitet und warnt vor Leistungsverlust durch Heat-Soak im Sommer oder Stau.
 - **K-Line / KW1281 Protokoll:**
-  - Fragt ohne zusätzliche Geber Kühlwassertemperatur und Bordspannung direkt digital aus dem Motronic M3.8.3 Steuergerät ab.
+  - Fragt ohne zusätzliche Geber Kühlwassertemperatur, Bordspannung, Lambda, Zündwinkel, Einspritzung und Fehlerspeicher (DTC) direkt digital aus dem Motronic M3.8.3 Steuergerät ab.
 
 ---
 
@@ -72,11 +90,13 @@ Durch einfaches Antippen des Touchscreens wechselst du jederzeit nahtlos zwische
 Motronic-OBD-Gauge/
 ├── AGU_ESP32_Gauge/
 │   ├── AGU_ESP32_Gauge.ino       # Hauptsketch (FreeRTOS / Non-blocking)
-│   ├── Config.h                  # Pins, Alarmschwellen & Sensor-Kalibrierung
+│   ├── Config.h                  # Pins, Alarmschwellen, WiFi- & Logger-Parameter
 │   ├── Sensors.h & .cpp          # Ladedruck, Öldruck, Öltemp, Ladeluft, EGT & Filter
-│   ├── KW1281.h & .cpp           # K-Line Diagnoseprotokoll für Kühlwasser & Batt V
+│   ├── KW1281.h & .cpp           # K-Line Diagnoseprotokoll (MWB 1-6 + DTCs lesen/löschen)
 │   ├── Simulator.h & .cpp        # Realistischer Motor- und Fahrzyklus-Simulator
-│   └── DisplayUI.h & .cpp        # 4 Themes fokussiert auf Motor-Betriebszustand
+│   ├── DisplayUI.h & .cpp        # 7 Themes inkl. DTC-Diagnose, Trend-Chart & ECU-Live
+│   ├── Logger.h & .cpp           # SD-Karten CSV Datenlogger (HSPI, 18 Parameter)
+│   └── WebDashboard.h & .cpp     # WiFi Access-Point & iPhone Web-Dashboard
 ├── tools/
 │   └── ecu_simulator.py          # Python Simulator für K-Line Tests am Schreibtisch
 ├── docs/

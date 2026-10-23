@@ -105,7 +105,10 @@ enum DisplayTheme {
     THEME_PRESSURE_TEMP = 1,  // Große Drücke oben (Ladedruck/Öldruck) & 4 Temp-Balken unten
     THEME_OEM_VDO = 2,        // Golf 4 VDO Look (Ladedruck & Öldruck Runduhren, MFA Temp-Center)
     THEME_MONITOR_MATRIX = 3, // Live Status-Matrix mit Alarmschwellen-Balken & Min/Max
-    THEME_COUNT = 4
+    THEME_DTC_DIAG = 4,       // Fehlercode-Diagnose (DTC Auslesen / Löschen)
+    THEME_TREND_CHART = 5,    // Verlaufsdiagramm (Temperatur-Trends über 60s)
+    THEME_ECU_LIVE = 6,       // ECU Live-Daten (Lambda, Einspritzung, Zündung)
+    THEME_COUNT = 7
 };
 
 // ==============================================================================
@@ -133,7 +136,27 @@ struct SensorData {
     float ecuMafGs;           // Luftmasse (g/s)
     int   ecuRpm;             // Motordrehzahl (zur Hintergrund-Berechnung)
 
-    // 4. ALARME & STATUS
+    // 4. ERWEITERTE ECU-DATEN (zusätzliche Messwertblöcke)
+    float ecuLambda;           // Lambda-Wert (0.0 - 2.0)
+    float ecuInjectionMs;      // Einspritzzeit (ms)
+    float ecuIgnitionTiming;   // Zündwinkel (°KW v.OT)
+    float ecuKnockRetard;      // Klopfregelung Rücknahme (°)
+    float ecuThrottlePct;      // Drosselklappenstellung (%)
+    uint8_t ecuStatusBits;     // Statusbits (Bit-Feld)
+
+    // 5. DTC (Fehlercodes / Diagnose)
+    uint8_t  dtcCount;                // Anzahl gespeicherter Fehlercodes
+    uint16_t dtcCodes[16];            // DTC-Nummern (max. 16 Stück)
+    uint8_t  dtcStatus[16];           // DTC-Status pro Code
+    bool     dtcReadPending;          // Anforderung: DTCs auslesen
+    bool     dtcClearPending;         // Anforderung: DTCs löschen
+    bool     milSeen;                 // MIL-Leuchte: mind. 1 DTC vorhanden
+
+    // 6. LOGGER & SD-KARTE
+    bool     sdCardReady;             // SD-Karte eingelegt und bereit
+    uint32_t logLinesWritten;         // Anzahl geschriebener Log-Zeilen
+
+    // 7. ALARME & STATUS
     bool  klineConnected;     // Verbindung zur ECU aktiv
     uint32_t klinePackets;
     bool  alarmOilPressure;   // Öldruck zu niedrig!
@@ -146,5 +169,30 @@ struct SensorData {
 
     DisplayTheme currentTheme;
 };
+
+// ==============================================================================
+// SD-KARTEN LOGGING (HSPI — CYD eingebauter SD-Slot)
+// ==============================================================================
+#define PIN_SD_CS              5     // HSPI Chip Select für SD-Karte
+#define LOG_INTERVAL_MS        1000  // Schreib-Intervall in ms (1 Hz)
+#define LOG_BUFFER_LINES       10    // Zeilen im RAM-Puffer vor Flush auf SD
+#define LOG_MAX_FILE_SIZE_MB   10    // Maximale Dateigröße pro Session (MB)
+#define LOG_MAX_SESSIONS       50    // Maximale Anzahl Session-Dateien auf SD
+#define ENABLE_SD_LOGGING      true  // SD-Karten Logging aktivieren/deaktivieren
+
+// ==============================================================================
+// TIMING / ABTASTRATEN
+// ==============================================================================
+#define SENSOR_SAMPLE_RATE_HZ  40    // Sensor-Abtastrate (Hz)
+#define DISPLAY_FPS_TARGET     20    // Display-Aktualisierungsrate (FPS)
+
+// ==============================================================================
+// WIFI & WEB-DASHBOARD (FÜR IPHONE / SMARTPHONE LIVE-ANZEIGE)
+// ==============================================================================
+#define ENABLE_WIFI_DASHBOARD  true               // ESP32 Access-Point & Web-Server
+#define WIFI_AP_SSID           "VW-1.8T-AGU-Gauge" // WiFi-Netzwerkname
+#define WIFI_AP_PASS           "motronic18t"      // WiFi-Passwort (mind. 8 Zeichen)
+#define WIFI_AP_CHANNEL        1                  // WiFi-Kanal
+#define WEB_SERVER_PORT        80                 // HTTP-Port (Standard 80)
 
 #endif // CONFIG_H

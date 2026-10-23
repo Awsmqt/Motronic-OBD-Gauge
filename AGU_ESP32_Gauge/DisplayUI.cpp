@@ -4,7 +4,13 @@
 DisplayUI::DisplayUI()
     : lastRenderedTheme(THEME_COUNT),
       touchPressStart(0),
-      wasTouched(false) {
+      wasTouched(false),
+      trendIndex(0),
+      trendCount(0),
+      lastTrendUpdate(0) {
+    memset(trendOilTemp, 0, sizeof(trendOilTemp));
+    memset(trendCoolant, 0, sizeof(trendCoolant));
+    memset(trendChargeAir, 0, sizeof(trendChargeAir));
 }
 
 void DisplayUI::begin() {
@@ -29,28 +35,40 @@ void DisplayUI::checkTouch(SensorData &data) {
             wasTouched = true;
             touchPressStart = millis();
         } else {
-            // Langes Drücken (> 1.5s): Min/Max-Werte zurücksetzen
+            // Langes Drücken (> 1.5s)
             if (millis() - touchPressStart > 1500) {
-                data.boostPeakBar = data.boostBar;
-                data.exhaustTempPeak = data.exhaustTemp;
-                data.oilTempPeak = data.oilTemp;
-                data.oilPressureMinBar = data.oilPressureBar;
+                if (data.currentTheme == THEME_DTC_DIAG) {
+                    // DTC-Seite: Langes Drücken → DTCs löschen
+                    data.dtcClearPending = true;
+                } else {
+                    // Andere Seiten: Min/Max-Werte zurücksetzen
+                    data.boostPeakBar = data.boostBar;
+                    data.exhaustTempPeak = data.exhaustTemp;
+                    data.oilTempPeak = data.oilTemp;
+                    data.oilPressureMinBar = data.oilPressureBar;
+                }
                 tft.fillScreen(TFT_BLACK);
                 touchPressStart = millis();
             }
         }
     } else {
         if (wasTouched) {
-            // Kurzer Tipp -> Theme wechseln
+            // Kurzer Tipp
             if (millis() - touchPressStart < 1000) {
-                nextTheme(data);
+                if (data.currentTheme == THEME_DTC_DIAG) {
+                    // DTC-Seite: Kurzer Tipp → DTCs auslesen (kein Theme-Wechsel)
+                    data.dtcReadPending = true;
+                } else {
+                    // Andere Seiten: Theme wechseln
+                    nextTheme(data);
+                }
             }
             wasTouched = false;
         }
     }
 }
 
-void DisplayUI::update(const SensorData &data) {
+void DisplayUI::update(SensorData &data) {
     if (data.currentTheme != lastRenderedTheme) {
         lastRenderedTheme = data.currentTheme;
         initTheme(data.currentTheme);
@@ -68,6 +86,15 @@ void DisplayUI::update(const SensorData &data) {
             break;
         case THEME_MONITOR_MATRIX:
             renderMonitorMatrix(data);
+            break;
+        case THEME_DTC_DIAG:
+            renderDtcDiag(data);
+            break;
+        case THEME_TREND_CHART:
+            renderTrendChart(data);
+            break;
+        case THEME_ECU_LIVE:
+            renderEcuLive(data);
             break;
         default:
             break;
@@ -92,6 +119,33 @@ void DisplayUI::initTheme(DisplayTheme theme) {
         // Zentrales MFA Bordcomputer-Gehäuse
         tft.drawRoundRect(108, 15, 104, 210, 4, COLOR_OEM_RED);
         tft.fillRoundRect(110, 17, 100, 206, 3, 0x2800); // Dunkles MFA-Rot
+    } else if (theme == THEME_DTC_DIAG) {
+        // Titelleiste für Fehlercode-Diagnose
+        tft.fillRect(0, 0, 320, 24, 0x1000); // Dunkelrot-Hintergrund
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(TFT_WHITE, 0x1000);
+        tft.drawString("FEHLERSPEICHER (DTC)", 160, 12, 2);
+    } else if (theme == THEME_TREND_CHART) {
+        // Gitterlinien für das Verlaufsdiagramm zeichnen
+        // Y-Achse: 20°C bis 140°C, Chartbereich x=60..260, y=40..200
+        tft.setTextDatum(TR_DATUM);
+        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        const int gridTemps[] = {40, 60, 80, 100, 120};
+        for (int i = 0; i < 5; i++) {
+            int gy = 200 - (int)((gridTemps[i] - 20.0f) / 120.0f * 160.0f);
+            tft.drawFastHLine(60, gy, 200, COLOR_GRID_BORDER);
+            char lbl[8];
+            snprintf(lbl, sizeof(lbl), "%d", gridTemps[i]);
+            tft.drawString(lbl, 56, gy - 4, 1);
+        }
+        // Rahmen um Chart-Bereich
+        tft.drawRect(59, 39, 202, 162, COLOR_GRID_BORDER);
+    } else if (theme == THEME_ECU_LIVE) {
+        // Titelleiste für ECU Live-Daten
+        tft.fillRect(0, 0, 320, 22, COLOR_GRID_BORDER);
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(COLOR_ACCENT_CYAN, COLOR_GRID_BORDER);
+        tft.drawString("ECU LIVE-DATEN", 160, 11, 2);
     }
 }
 
@@ -386,4 +440,296 @@ void DisplayUI::renderMonitorMatrix(const SensorData &data) {
     tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
     snprintf(val, sizeof(val), "BATT: %.1fV | PEAK BOOST: %.2f bar", data.batteryVolt, data.boostPeakBar);
     tft.drawString(val, 8, 225, 1);
+}
+
+// ==============================================================================
+// THEME 5: FEHLERCODE-DIAGNOSE (DTC READ & CLEAR)
+// ==============================================================================
+void DisplayUI::formatDtcCode(uint16_t raw, char *out) {
+    const char prefixes[] = {'P', 'C', 'B', 'U'};
+    char prefix = prefixes[(raw >> 14) & 0x03];
+    uint8_t d1 = (raw >> 12) & 0x03;
+    uint8_t d2 = (raw >> 8) & 0x0F;
+    uint8_t d3 = (raw >> 4) & 0x0F;
+    uint8_t d4 = raw & 0x0F;
+    snprintf(out, 12, "%c%d%X%X%X", prefix, d1, d2, d3, d4);
+}
+
+void DisplayUI::renderDtcDiag(SensorData &data) {
+    // Kopfzeile: Status
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_WHITE, 0x1000);
+    tft.drawString("FEHLERSPEICHER (DTC)", 8, 5, 2);
+
+    // MIL Status-Indikator
+    if (data.milSeen || data.dtcCount > 0) {
+        tft.fillCircle(270, 12, 6, TFT_RED);
+        tft.setTextColor(TFT_RED, 0x1000);
+        tft.drawString("MIL AN", 282, 5, 1);
+    } else {
+        tft.fillCircle(270, 12, 6, COLOR_ACCENT_GREEN);
+        tft.setTextColor(COLOR_ACCENT_GREEN, 0x1000);
+        tft.drawString("MIL OK", 282, 5, 1);
+    }
+
+    // Inhalt
+    int yStart = 35;
+    if (data.dtcCount == 0) {
+        // Keine Fehler
+        tft.fillRect(0, yStart, 320, 150, TFT_BLACK);
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(COLOR_ACCENT_GREEN, TFT_BLACK);
+        tft.drawString("KEINE FEHLER GESPEICHERT", 160, 95, 4);
+
+        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        tft.drawString("Steuergeraet Fehlerspeicher ist sauber.", 160, 130, 2);
+
+        char klineStr[40];
+        snprintf(klineStr, sizeof(klineStr), "K-Line: %s (%lu Pakete)",
+                 data.klineConnected ? "Verbunden" : "Offline", (unsigned long)data.klinePackets);
+        tft.drawString(klineStr, 160, 155, 1);
+    } else {
+        // Fehlerliste anzeigen
+        tft.fillRect(0, yStart, 320, 150, TFT_BLACK);
+        char dtcBuf[16];
+        char lineBuf[48];
+
+        int displayCount = data.dtcCount > 6 ? 6 : data.dtcCount;
+        for (int i = 0; i < displayCount; i++) {
+            formatDtcCode(data.dtcCodes[i], dtcBuf);
+            uint8_t stat = data.dtcStatus[i];
+
+            const char *statText = "permanent";
+            if (stat & 0x20) statText = "sporadisch";
+            else if (stat & 0x40) statText = "statisch";
+
+            snprintf(lineBuf, sizeof(lineBuf), "#%d: %s (0x%04X) - %s",
+                     i + 1, dtcBuf, data.dtcCodes[i], statText);
+
+            tft.setTextDatum(TL_DATUM);
+            tft.setTextColor(TFT_RED, TFT_BLACK);
+            tft.drawString(lineBuf, 12, yStart + i * 24, 2);
+        }
+
+        if (data.dtcCount > 6) {
+            snprintf(lineBuf, sizeof(lineBuf), "... und %d weitere Fehler", data.dtcCount - 6);
+            tft.setTextColor(COLOR_ACCENT_YELLOW, TFT_BLACK);
+            tft.drawString(lineBuf, 12, yStart + 6 * 24, 1);
+        }
+    }
+
+    // Fußzeile: Bedienungsanleitung
+    tft.drawFastHLine(0, 195, 320, COLOR_GRID_BORDER);
+    tft.fillRect(0, 196, 320, 44, 0x0821);
+
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(COLOR_ACCENT_CYAN, 0x0821);
+    tft.drawString("TIPPEN: Neu auslesen", 90, 218, 2);
+
+    tft.drawFastVLine(180, 200, 36, COLOR_GRID_BORDER);
+
+    tft.setTextColor(COLOR_ACCENT_ORANGE, 0x0821);
+    tft.drawString("HALTEN: Speicher loeschen", 250, 218, 1);
+}
+
+// ==============================================================================
+// THEME 6: TREND-CHART (TEMPERATUR-VERLAUF UEBER 60 SEKUNDEN)
+// ==============================================================================
+void DisplayUI::drawTrendLine(const float *buf, uint8_t idx, uint8_t count, int x, int y, int w, int h, float minV, float maxV, uint16_t color) {
+    if (count < 2) return;
+
+    float dx = (float)w / (float)(TREND_BUF_SIZE - 1);
+
+    for (int i = 0; i < count - 1; i++) {
+        int bufIdx1 = (idx - count + i + TREND_BUF_SIZE) % TREND_BUF_SIZE;
+        int bufIdx2 = (idx - count + i + 1 + TREND_BUF_SIZE) % TREND_BUF_SIZE;
+
+        float v1 = buf[bufIdx1];
+        float v2 = buf[bufIdx2];
+
+        // Skalieren auf Y
+        float p1 = (v1 - minV) / (maxV - minV);
+        float p2 = (v2 - minV) / (maxV - minV);
+        if (p1 < 0.0f) p1 = 0.0f; else if (p1 > 1.0f) p1 = 1.0f;
+        if (p2 < 0.0f) p2 = 0.0f; else if (p2 > 1.0f) p2 = 1.0f;
+
+        int y1 = (y + h) - (int)(p1 * (float)h);
+        int y2 = (y + h) - (int)(p2 * (float)h);
+
+        int x1 = x + (int)((float)i * dx);
+        int x2 = x + (int)((float)(i + 1) * dx);
+
+        tft.drawLine(x1, y1, x2, y2, color);
+        tft.drawLine(x1, y1 + 1, x2, y2 + 1, color); // Dickere Linie
+    }
+}
+
+void DisplayUI::renderTrendChart(const SensorData &data) {
+    unsigned long now = millis();
+
+    // Ringpuffer einmal pro Sekunde aktualisieren
+    if (now - lastTrendUpdate >= 1000) {
+        lastTrendUpdate = now;
+        trendOilTemp[trendIndex] = data.oilTemp;
+        trendCoolant[trendIndex] = data.coolantTemp;
+        trendChargeAir[trendIndex] = data.chargeAirTemp;
+        trendIndex = (trendIndex + 1) % TREND_BUF_SIZE;
+        if (trendCount < TREND_BUF_SIZE) trendCount++;
+    }
+
+    // Chart-Innenraum leeren
+    tft.fillRect(60, 40, 200, 160, TFT_BLACK);
+
+    // Gitterlinien neu zeichnen
+    const int gridTemps[] = {40, 60, 80, 100, 120};
+    for (int i = 0; i < 5; i++) {
+        int gy = 200 - (int)((gridTemps[i] - 20.0f) / 120.0f * 160.0f);
+        tft.drawFastHLine(60, gy, 200, COLOR_GRID_BORDER);
+    }
+
+    // 3 Kurven zeichnen: Öl (Orange), Wasser (Cyan), Ladeluft (Grün)
+    drawTrendLine(trendOilTemp, trendIndex, trendCount, 60, 40, 200, 160, 20.0f, 140.0f, COLOR_ACCENT_ORANGE);
+    drawTrendLine(trendCoolant, trendIndex, trendCount, 60, 40, 200, 160, 20.0f, 140.0f, TFT_CYAN);
+    drawTrendLine(trendChargeAir, trendIndex, trendCount, 60, 40, 200, 160, 20.0f, 140.0f, COLOR_ACCENT_GREEN);
+
+    // Legende & Live-Werte oben
+    char leg[32];
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(COLOR_ACCENT_ORANGE, TFT_BLACK);
+    snprintf(leg, sizeof(leg), "OEL %.0fC", data.oilTemp);
+    tft.drawString(leg, 10, 8, 2);
+
+    tft.setTextDatum(TC_DATUM);
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    snprintf(leg, sizeof(leg), "H2O %.0fC", data.coolantTemp);
+    tft.drawString(leg, 150, 8, 2);
+
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(COLOR_ACCENT_GREEN, TFT_BLACK);
+    snprintf(leg, sizeof(leg), "LLK %.1fC", data.chargeAirTemp);
+    tft.drawString(leg, 310, 8, 2);
+
+    // Drücke rechts außen
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("BOOST", 265, 55, 1);
+    char bStr[12];
+    dtostrf(data.boostBar, 4, 2, bStr);
+    tft.setTextColor(data.alarmBoost ? TFT_RED : COLOR_ACCENT_CYAN, TFT_BLACK);
+    tft.drawString(bStr, 265, 70, 2);
+
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("OEL-P", 265, 115, 1);
+    dtostrf(data.oilPressureBar, 4, 1, bStr);
+    tft.setTextColor(data.alarmOilPressure ? TFT_RED : COLOR_ACCENT_GREEN, TFT_BLACK);
+    tft.drawString(bStr, 265, 130, 2);
+
+    // Fußzeile
+    tft.setTextDatum(ML_DATUM);
+    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    snprintf(leg, sizeof(leg), "60s Trend | EGT: %dC | Batt: %.1fV",
+             (int)data.exhaustTemp, data.batteryVolt);
+    tft.drawString(leg, 10, 225, 1);
+}
+
+// ==============================================================================
+// THEME 7: ECU LIVE-DATEN (LAMBDA, EINSPRITZUNG, ZUENDWINKEL, KLOPFEN)
+// ==============================================================================
+void DisplayUI::renderEcuLive(const SensorData &data) {
+    char valBuf[24];
+
+    // Titelleiste
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_WHITE, COLOR_GRID_BORDER);
+    tft.drawString("ECU LIVE-DATEN (KW1281 MWB)", 8, 4, 2);
+
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(data.klineConnected ? COLOR_ACCENT_GREEN : TFT_RED, COLOR_GRID_BORDER);
+    snprintf(valBuf, sizeof(valBuf), "%d RPM", data.ecuRpm);
+    tft.drawString(valBuf, 312, 4, 2);
+
+    int y0 = 30;
+    int rowH = 30;
+
+    // 1. Lambda-Wert
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("LAMBDA", 10, y0 + 2, 2);
+
+    float lam = data.ecuLambda > 0.1f ? data.ecuLambda : 1.000f;
+    uint16_t lamCol = (lam >= 0.95f && lam <= 1.05f) ? COLOR_ACCENT_GREEN : (lam < 0.90f ? COLOR_ACCENT_YELLOW : TFT_RED);
+    snprintf(valBuf, sizeof(valBuf), "%.3f", lam);
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(lamCol, TFT_BLACK);
+    tft.drawString(valBuf, 180, y0 + 2, 2);
+
+    // Lambda Balken (0.75 bis 1.25, Mitte = 1.00)
+    drawHorizontalBar(190, y0 + 6, 120, 10, lam, 0.75f, 1.25f, lamCol);
+
+    // 2. Einspritzzeit
+    int y = y0 + rowH;
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("EINSPRITZZEIT", 10, y + 2, 2);
+
+    snprintf(valBuf, sizeof(valBuf), "%.2f ms", data.ecuInjectionMs);
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(COLOR_ACCENT_CYAN, TFT_BLACK);
+    tft.drawString(valBuf, 180, y + 2, 2);
+    drawHorizontalBar(190, y + 6, 120, 10, data.ecuInjectionMs, 0.0f, 18.0f, COLOR_ACCENT_CYAN);
+
+    // 3. Zündwinkel
+    y += rowH;
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("ZUENDWINKEL", 10, y + 2, 2);
+
+    snprintf(valBuf, sizeof(valBuf), "%.1f deg", data.ecuIgnitionTiming);
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(COLOR_ACCENT_ORANGE, TFT_BLACK);
+    tft.drawString(valBuf, 180, y + 2, 2);
+    drawHorizontalBar(190, y + 6, 120, 10, data.ecuIgnitionTiming, 0.0f, 40.0f, COLOR_ACCENT_ORANGE);
+
+    // 4. Klopfregelung Rücknahme
+    y += rowH;
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("KLOPFRUECKNAHME", 10, y + 2, 2);
+
+    uint16_t knockCol = data.ecuKnockRetard <= 0.5f ? COLOR_ACCENT_GREEN : (data.ecuKnockRetard <= 3.0f ? COLOR_ACCENT_YELLOW : TFT_RED);
+    snprintf(valBuf, sizeof(valBuf), "%.1f deg", data.ecuKnockRetard);
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(knockCol, TFT_BLACK);
+    tft.drawString(valBuf, 180, y + 2, 2);
+    drawHorizontalBar(190, y + 6, 120, 10, data.ecuKnockRetard, 0.0f, 12.0f, knockCol);
+
+    // 5. Drosselklappe
+    y += rowH;
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("DROSSELKLAPPE", 10, y + 2, 2);
+
+    snprintf(valBuf, sizeof(valBuf), "%.1f %%", data.ecuThrottlePct);
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString(valBuf, 180, y + 2, 2);
+    drawHorizontalBar(190, y + 6, 120, 10, data.ecuThrottlePct, 0.0f, 100.0f, TFT_WHITE);
+
+    // 6. Last & Luftmasse
+    y += rowH;
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("LAST / MAF", 10, y + 2, 2);
+
+    snprintf(valBuf, sizeof(valBuf), "%.0f%% | %.1f g/s", data.ecuEngineLoadPct, data.ecuMafGs);
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(COLOR_ACCENT_CYAN, TFT_BLACK);
+    tft.drawString(valBuf, 312, y + 2, 2);
+
+    // Fußzeile
+    tft.setTextDatum(ML_DATUM);
+    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    snprintf(valBuf, sizeof(valBuf), "K-Line: %lu Pakete | SD-Log: %lu Z.",
+             (unsigned long)data.klinePackets, (unsigned long)data.logLinesWritten);
+    tft.drawString(valBuf, 10, 225, 1);
 }

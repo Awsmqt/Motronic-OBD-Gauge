@@ -21,14 +21,23 @@ public:
     void update(SensorData &data);
     bool isConnected() const { return state == KLINE_CONNECTED; }
 
+    // DTC-Anforderungen von außen setzen
+    void triggerDTCRead()  { dtcReadRequested = true; }
+    void triggerDTCClear() { dtcClearRequested = true; }
+
 private:
     KlineState state;
     uint8_t blockCounter;
     uint8_t currentGroup;
     unsigned long stateTimer;
     unsigned long lastByteReceivedTime;
+    unsigned long lastDtcCheckTime;     // Zeitpunkt der letzten DTC-Prüfung
     uint8_t rxBuffer[64];
     uint8_t rxIndex;
+
+    // DTC-Steuerungsflags (intern)
+    bool dtcReadRequested;
+    bool dtcClearRequested;
 
     void start5BaudInit();
     bool readBlock(uint8_t *buffer, uint8_t &length, uint8_t &title);
@@ -39,6 +48,10 @@ private:
     void decodeField(uint8_t formula, uint8_t a, uint8_t b, int fieldIndex, SensorData &sensorData);
     uint8_t readByteWithTimeout(uint16_t timeoutMs, bool *ok = nullptr);
     void sendByteWithEchoCheck(uint8_t b);
+
+    // DTC-Funktionen
+    bool requestDTCs(SensorData &data);
+    bool clearDTCs();
 };
 
 #endif // KW1281_H

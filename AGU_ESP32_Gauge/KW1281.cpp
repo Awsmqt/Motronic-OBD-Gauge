@@ -6,7 +6,10 @@ KW1281Protocol::KW1281Protocol()
       currentGroup(1),
       stateTimer(0),
       lastByteReceivedTime(0),
-      rxIndex(0) {
+      lastDtcCheckTime(0),
+      rxIndex(0),
+      dtcReadRequested(false),
+      dtcClearRequested(false) {
 }
 
 void KW1281Protocol::begin() {
@@ -154,28 +157,58 @@ void KW1281Protocol::requestGroup(uint8_t groupNumber) {
 
 void KW1281Protocol::decodeField(uint8_t formula, uint8_t a, uint8_t b, int fieldIndex, SensorData &sensorData) {
     // VAG KW1281 Formel-Dekodierung:
+    float fa = (float)a;
+    float fb = (float)b;
     switch (formula) {
         case 1: // Drehzahl: 0.2 * a * b
-            sensorData.ecuRpm = (int)(0.2f * (float)a * (float)b);
+            sensorData.ecuRpm = (int)(0.2f * fa * fb);
             break;
-        case 5: // Kühlmittel / IAT: 0.1 * (a - 100) oder a * 1 - 50
+        case 2: // Einspritzdauer/diverse: a * 0.002 * b (ms)
+            sensorData.ecuInjectionMs = fa * 0.002f * fb;
+            break;
+        case 3: // Zündwinkel: a * 0.04 * b
+            sensorData.ecuIgnitionTiming = fa * 0.04f * fb;
+            break;
+        case 4: // Abweichung: abs(b - 127) * 0.01 * a
+            sensorData.ecuKnockRetard = (float)abs((int)b - 127) * 0.01f * fa;
+            break;
+        case 5: // Kühlmittel / IAT: a - 50 (°C)
             if (fieldIndex == 1) {
-                sensorData.coolantTemp = (float)a - 50.0f;
+                sensorData.coolantTemp = fa - 50.0f;
             } else if (fieldIndex == 3) {
-                sensorData.ecuIntakeAirTemp = (float)a - 50.0f;
+                sensorData.ecuIntakeAirTemp = fa - 50.0f;
             }
+            break;
+        case 6: // Diverse: a * 0.001 * b
+            // Kontextabhängig, z.B. Drosselklappe oder weitere Sensoren
+            sensorData.ecuThrottlePct = fa * 0.001f * fb * 100.0f;
             break;
         case 7: // Geschwindigkeit: 0.01 * a * b
             break;
-        case 20: // Last in %: a * 0.392 ODER Luftmasse MAF
+        case 10: // Status-Bits (Rohwerte, Bit-Feld)
+            sensorData.ecuStatusBits = b;
+            break;
+        case 15: // Einspritzzeit: 0.01 * a * b (ms)
+            sensorData.ecuInjectionMs = 0.01f * fa * fb;
+            break;
+        case 18: // Einspritzzeit alternativ: 0.04 * a * b (ms)
+            sensorData.ecuInjectionMs = 0.04f * fa * fb;
+            break;
+        case 20: // Last in % ODER Luftmasse MAF
             if (fieldIndex == 1) {
-                sensorData.ecuEngineLoadPct = (float)a * 0.392f;
+                sensorData.ecuEngineLoadPct = fa * 0.392f;
             } else if (fieldIndex == 3) {
-                sensorData.ecuMafGs = (float)a * 0.78125f; // Luftmasse in g/s
+                sensorData.ecuMafGs = fa * 0.78125f; // Luftmasse in g/s
             }
             break;
         case 21: // Spannung: 0.001 * a * b
-            sensorData.batteryVolt = 0.001f * (float)a * (float)b;
+            sensorData.batteryVolt = 0.001f * fa * fb;
+            break;
+        case 25: // Klopfregelung Rücknahme: (b - 128) * 0.01 * a (°)
+            sensorData.ecuKnockRetard = (fb - 128.0f) * 0.01f * fa;
+            break;
+        case 31: // Lambda-Wert: b / 2560 * a (0 - 2.0)
+            sensorData.ecuLambda = fb / 2560.0f * fa;
             break;
         default:
             break;
@@ -263,7 +296,47 @@ void KW1281Protocol::update(SensorData &data) {
         }
 
         case KLINE_CONNECTED: {
-            // Reihum Messwertblöcke MWB 001, MWB 002, MWB 003 abfragen
+            unsigned long now2 = millis();
+
+            // --- DTC-Löschung hat Priorität (wenn angefordert) ---
+            if (dtcClearRequested || data.dtcClearPending) {
+                Serial.println("[KW1281] Sende DTC-Löschanforderung (Titel 0x05)...");
+                dtcClearRequested = false;
+                data.dtcClearPending = false;
+                if (clearDTCs()) {
+                    Serial.println("[KW1281] DTCs erfolgreich gelöscht.");
+                    data.dtcCount = 0;
+                    memset(data.dtcCodes, 0, sizeof(data.dtcCodes));
+                    memset(data.dtcStatus, 0, sizeof(data.dtcStatus));
+                    data.milSeen = false;
+                } else {
+                    Serial.println("[KW1281] DTC-Löschung fehlgeschlagen!");
+                }
+                break;
+            }
+
+            // --- DTC-Auslesen (wenn angefordert oder periodisch alle 10s) ---
+            if (dtcReadRequested || data.dtcReadPending ||
+                (now2 - lastDtcCheckTime >= 10000 && lastDtcCheckTime > 0)) {
+                Serial.println("[KW1281] Lese Fehlercodes (Titel 0x07)...");
+                dtcReadRequested = false;
+                data.dtcReadPending = false;
+                lastDtcCheckTime = now2;
+                if (requestDTCs(data)) {
+                    Serial.printf("[KW1281] %d DTC(s) gelesen.\n", data.dtcCount);
+                    data.milSeen = (data.dtcCount > 0);
+                } else {
+                    Serial.println("[KW1281] DTC-Lesung fehlgeschlagen.");
+                }
+                break;
+            }
+
+            // Initiale DTC-Prüfung nach Verbindungsaufbau
+            if (lastDtcCheckTime == 0) {
+                lastDtcCheckTime = now2;
+            }
+
+            // --- Normaler Messwertblock-Zyklus (Gruppen 1-6) ---
             requestGroup(currentGroup);
             
             uint8_t buf[48];
@@ -277,9 +350,9 @@ void KW1281Protocol::update(SensorData &data) {
                 }
                 sendAck();
 
-                // Nächsten Block rotieren (1 -> 2 -> 3 -> 1)
+                // Nächsten Block rotieren (1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 1)
                 currentGroup++;
-                if (currentGroup > 3) currentGroup = 1;
+                if (currentGroup > 6) currentGroup = 1;
             } else {
                 // Timeout bei Blockempfang
                 Serial.println("[KW1281] Verbindungsverlust zur ECU. Reconnect...");
@@ -298,4 +371,82 @@ void KW1281Protocol::update(SensorData &data) {
             }
             break;
     }
+}
+
+// ==============================================================================
+// DTC-FUNKTIONEN (Fehlercodes lesen / löschen)
+// ==============================================================================
+
+bool KW1281Protocol::requestDTCs(SensorData &data) {
+    // DTC-Leseanforderung senden: Titel 0x07 (Read DTC)
+    sendBlock(nullptr, 0, 0x07);
+
+    uint8_t buf[48];
+    uint8_t len = 0;
+    uint8_t title = 0;
+
+    if (!readBlock(buf, len, title)) {
+        Serial.println("[KW1281] Timeout bei DTC-Antwort.");
+        return false;
+    }
+
+    if (title == 0xFC) {
+        // DTC-Antwort: Jeweils 3 Bytes pro DTC (2 Bytes Nummer big-endian + 1 Byte Status)
+        data.dtcCount = 0;
+        uint8_t numDtcs = len / 3;
+        if (numDtcs > 16) numDtcs = 16;
+
+        for (uint8_t i = 0; i < numDtcs; i++) {
+            uint16_t dtcCode = ((uint16_t)buf[i * 3] << 8) | buf[i * 3 + 1];
+            uint8_t  dtcStat = buf[i * 3 + 2];
+
+            // DTC-Code 0x0000 überspringen (kein gültiger Fehler)
+            if (dtcCode == 0x0000) continue;
+
+            data.dtcCodes[data.dtcCount]  = dtcCode;
+            data.dtcStatus[data.dtcCount] = dtcStat;
+            data.dtcCount++;
+
+            Serial.printf("[KW1281] DTC #%d: Code 0x%04X, Status 0x%02X\n",
+                          data.dtcCount, dtcCode, dtcStat);
+        }
+
+        sendAck();
+        return true;
+    } else if (title == 0x09) {
+        // ACK ohne DTCs -> keine Fehlercodes gespeichert
+        data.dtcCount = 0;
+        Serial.println("[KW1281] Keine DTCs vorhanden (ACK erhalten).");
+        return true;
+    }
+
+    // Unerwarteter Titel -> trotzdem ACK senden
+    Serial.printf("[KW1281] Unerwarteter DTC-Antworttitel: 0x%02X\n", title);
+    sendAck();
+    return false;
+}
+
+bool KW1281Protocol::clearDTCs() {
+    // DTC-Löschanforderung senden: Titel 0x05 (Clear DTC / Fehlerspeicher löschen)
+    sendBlock(nullptr, 0, 0x05);
+
+    uint8_t buf[48];
+    uint8_t len = 0;
+    uint8_t title = 0;
+
+    if (!readBlock(buf, len, title)) {
+        Serial.println("[KW1281] Timeout bei DTC-Löschantwort.");
+        return false;
+    }
+
+    // ECU bestätigt mit ACK (0x09) oder manchmal mit 0xFC (leere Liste)
+    if (title == 0x09 || title == 0xFC) {
+        sendAck();
+        Serial.println("[KW1281] Fehlerspeicher gelöscht (ECU hat bestätigt).");
+        return true;
+    }
+
+    Serial.printf("[KW1281] Unerwartete Antwort auf DTC-Löschung: 0x%02X\n", title);
+    sendAck();
+    return false;
 }

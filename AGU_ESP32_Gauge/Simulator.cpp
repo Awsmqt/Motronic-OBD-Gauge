@@ -10,7 +10,12 @@ MotorSimulator::MotorSimulator()
       currentCoolant(70.0f),
       currentChargeAir(22.0f),
       currentEgt(420.0f),
-      currentBattery(14.1f) {
+      currentBattery(14.1f),
+      currentLambda(1.00f),
+      currentInjectionMs(3.5f),
+      currentIgnitionTiming(12.0f),
+      currentKnockRetard(0.0f),
+      currentThrottlePct(3.0f) {
 }
 
 void MotorSimulator::begin() {
@@ -66,6 +71,12 @@ void MotorSimulator::update(SensorData &data) {
             currentChargeAir = 22.0f;
             currentEgt = 430.0f;
             currentBattery = 14.2f;
+            // Erweiterte ECU-Werte (Kaltlauf)
+            currentLambda = 0.98f + ((float)random(-2, 2) / 100.0f);   // Fett im Kaltlauf
+            currentInjectionMs = 5.5f + ((float)random(-3, 3) / 10.0f);
+            currentIgnitionTiming = 8.0f;
+            currentKnockRetard = 0.0f;
+            currentThrottlePct = 3.0f + ((float)random(-5, 5) / 10.0f);
             break;
 
         case SIM_WARM_CRUISING:
@@ -77,6 +88,12 @@ void MotorSimulator::update(SensorData &data) {
             currentChargeAir = 26.0f + progress * 4.0f;
             currentEgt = 560.0f + progress * 100.0f;
             currentBattery = 13.9f;
+            // Erweiterte ECU-Werte (Teillast)
+            currentLambda = 1.00f + ((float)random(-1, 1) / 100.0f);
+            currentInjectionMs = 4.0f + progress * 2.0f;
+            currentIgnitionTiming = 12.0f + progress * 3.0f;
+            currentKnockRetard = 0.0f;
+            currentThrottlePct = 15.0f + progress * 25.0f;
             break;
 
         case SIM_BOOST_PULL:
@@ -88,6 +105,12 @@ void MotorSimulator::update(SensorData &data) {
             currentChargeAir = 30.0f + progress * 12.0f; // LLK erwärmt sich auf 42°C
             currentEgt = 680.0f + progress * 180.0f;     // EGT steigt auf 860°C
             currentBattery = 13.8f;
+            // Erweiterte ECU-Werte (Volllast mit Ladedruck)
+            currentLambda = 0.88f + ((float)random(-2, 2) / 100.0f);   // Angefettet unter Last
+            currentInjectionMs = 8.0f + progress * 4.0f;                // Bis 12ms
+            currentIgnitionTiming = 15.0f - progress * 6.0f;            // Zündung zurücknehmen
+            currentKnockRetard = progress * 2.5f;                       // Leichtes Klopfen
+            currentThrottlePct = 60.0f + progress * 40.0f;              // Bis 100%
             break;
 
         case SIM_HARD_TRACK_PULL:
@@ -99,6 +122,12 @@ void MotorSimulator::update(SensorData &data) {
             currentChargeAir = 42.0f + progress * 14.0f; // Ladeluft klettert auf 56°C (Heat-Soak)
             currentEgt = 860.0f + progress * 65.0f;      // EGT klettert auf 925°C (Warnschwelle!)
             currentBattery = 13.7f;
+            // Erweiterte ECU-Werte (Dauervollgas)
+            currentLambda = 0.86f + ((float)random(-1, 2) / 100.0f);
+            currentInjectionMs = 11.0f + progress * 1.0f;
+            currentIgnitionTiming = 9.0f - progress * 3.0f;             // Zündung weit zurück
+            currentKnockRetard = 1.5f + progress * 1.5f;                // Bis 3° Rücknahme
+            currentThrottlePct = 100.0f;
             break;
 
         case SIM_HOT_IDLE:
@@ -110,6 +139,12 @@ void MotorSimulator::update(SensorData &data) {
             currentChargeAir = currentChargeAir + (35.0f - currentChargeAir) * 0.03f;
             currentEgt = currentEgt + (490.0f - currentEgt) * 0.05f;
             currentBattery = 13.6f;
+            // Erweiterte ECU-Werte (Heißer Leerlauf)
+            currentLambda = 1.00f + ((float)random(-1, 1) / 100.0f);
+            currentInjectionMs = 3.8f + ((float)random(-2, 2) / 10.0f);
+            currentIgnitionTiming = 10.0f;
+            currentKnockRetard = 0.0f;
+            currentThrottlePct = 2.5f + ((float)random(-5, 5) / 10.0f);
             break;
     }
 
@@ -136,6 +171,27 @@ void MotorSimulator::update(SensorData &data) {
     data.ecuRpm = (currentBoost > 0.0f) ? 4500 : 880;
     data.klineConnected = true;
     data.klinePackets++;
+
+    // Erweiterte ECU-Simulationswerte übertragen
+    data.ecuLambda = currentLambda;
+    data.ecuInjectionMs = currentInjectionMs;
+    data.ecuIgnitionTiming = currentIgnitionTiming;
+    data.ecuKnockRetard = currentKnockRetard;
+    data.ecuThrottlePct = currentThrottlePct;
+    data.ecuStatusBits = (currentBoost > 0.0f) ? 0x03 : 0x01; // Bit 0: Motorlauf, Bit 1: Volllast
+
+    // Simulierte DTCs: In BOOST_PULL und HARD_TRACK_PULL Phasen 2 Test-DTCs setzen
+    if (currentPhase == SIM_BOOST_PULL || currentPhase == SIM_HARD_TRACK_PULL) {
+        data.dtcCount = 2;
+        data.dtcCodes[0]  = 0x4444; // P1092 - Simulierter Ladedruck-Fehler
+        data.dtcStatus[0] = 0x20;   // Status: sporadisch
+        data.dtcCodes[1]  = 0x0565; // P0565 - Simulierter Geschwindigkeitssignal-Fehler
+        data.dtcStatus[1] = 0x60;   // Status: bestätigt
+        data.milSeen = true;
+    } else {
+        data.dtcCount = 0;
+        data.milSeen = false;
+    }
 
     // Alarme evaluieren
     data.alarmOilPressure = (data.oilPressureBar < ALARM_OIL_PRESS_MIN_WARN);

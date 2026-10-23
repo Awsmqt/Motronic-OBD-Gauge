@@ -200,11 +200,54 @@ class MotronicM383Simulator:
             a_iat = int(self.iat + 50.0)
             data.extend([0x05, a_iat & 0xFF, 0x00])
 
+        elif group_num == 4:
+            # MWB 004: Drehzahl, Lambda-Wert, Drosselklappe, Zündwinkel
+            rpm_div = int(self.rpm / 0.2)
+            data.extend([0x01, int(rpm_div / 250) & 0xFF, 250])
+            # Lambda (Formel 31: b / 2560 * a => a=128, b=20 => ~1.000)
+            data.extend([0x1F, 128, 20])
+            # Drosselklappe (Formel 6: a * 0.001 * b * 100)
+            data.extend([0x06, 25, 10])
+            # Zündwinkel (Formel 3: a * 0.04 * b)
+            data.extend([0x03, 10, 30])
+
+        elif group_num == 5:
+            # MWB 005: Drehzahl, Last, Geschwindigkeit, Einspritzzeit
+            rpm_div = int(self.rpm / 0.2)
+            data.extend([0x01, int(rpm_div / 250) & 0xFF, 250])
+            data.extend([0x20, int(self.load / 0.392) & 0xFF, 0x00])
+            data.extend([0x07, 60, 100]) # 60 km/h
+            data.extend([0x0F, 40, 10])  # Einspritzzeit 4.0ms
+
+        elif group_num == 6:
+            # MWB 006: Drehzahl, Last, IAT, Klopfrücknahme
+            rpm_div = int(self.rpm / 0.2)
+            data.extend([0x01, int(rpm_div / 250) & 0xFF, 250])
+            data.extend([0x20, int(self.load / 0.392) & 0xFF, 0x00])
+            data.extend([0x05, int(self.iat + 50.0) & 0xFF, 0x00])
+            # Klopfrücknahme (Formel 25: (b - 128) * 0.01 * a)
+            data.extend([0x19, 100, 128]) # 0.0°
+
         else:
             # Fallback leere Gruppe
             data.extend([0x00, 0x00, 0x00] * 4)
 
         self.send_block(data, 0xE7) # 0xE7 = Group data response
+
+    def handle_dtc_request(self):
+        """Simuliert Antwort auf Fehlercode-Abfrage (Titel 0x07)"""
+        print("[*] Tester fordert DTCs an (Titel 0x07)...")
+        # Sende 2 simulierte DTCs: 0x4444 (sporadisch 0x20) und 0x0565 (statisch 0x60)
+        dtc_data = bytearray([
+            0x44, 0x44, 0x20,  # DTC 1: P1092 sporadisch
+            0x05, 0x65, 0x60   # DTC 2: P0565 statisch
+        ])
+        self.send_block(dtc_data, 0xFC) # 0xFC = DTC response
+
+    def handle_dtc_clear(self):
+        """Simuliert Bestätigung auf Fehlerspeicher löschen (Titel 0x05)"""
+        print("[*] Tester löscht Fehlerspeicher (Titel 0x05)...")
+        self.send_block(b'', 0x09) # 0x09 = ACK
 
     def loop(self):
         """Hauptschleife des Simulators"""
@@ -249,6 +292,12 @@ class MotronicM383Simulator:
                     # Messwertblock-Anfrage
                     group = data[0] if len(data) > 0 else 1
                     self.handle_group_request(group)
+                elif title == 0x07:
+                    # DTCs auslesen
+                    self.handle_dtc_request()
+                elif title == 0x05:
+                    # DTCs löschen
+                    self.handle_dtc_clear()
                 elif title == 0x06:
                     # End of communication
                     print("[*] Tester beendet Kommunikation.")
