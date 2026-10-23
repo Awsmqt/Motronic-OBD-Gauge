@@ -1,139 +1,118 @@
 /*
- * VW 1.8T AGU (Motronic M3.8.3) ESP32 CYD Gauge
- * Base UI, MAP Sensor (Boost), EGT (MAX31855) and KW1281 Serial init.
+ * ==============================================================================
+ * VW 1.8T AGU (Bosch Motronic M3.8.3) - ESP32 CYD Multi-Gauge & OBD Telemetry
+ * ==============================================================================
+ * 
+ * Hardware:
+ *   - ESP32 CYD (Cheap Yellow Display - ESP32-2432S028)
+ *   - Bosch 3-Bar / 4-Bar MAP Sensor (Ladedruck analog an GPIO 35)
+ *   - K-Typ Thermoelement mit Adafruit MAX31855 (Abgastemperatur EGT via SPI)
+ *   - Externer Ladeluft-NTC Sensor (Ladeluftkühler-Ausgang an GPIO 34)
+ *   - L9637D / Si9241 K-Line Transceiver an Serial2 (KW1281 OBD Protokoll)
+ * 
+ * Features:
+ *   - KW1281 5-Baud Slow Init & automatisches Auslesen von MWB 001, 002, 003
+ *   - Auto-Zeroing des barometrischen Umgebungsdrucks beim Einschalten
+ *   - 4 umschaltbare Design-Themes (Touch auf den Bildschirm wechselt das Design)
+ *   - Integrierter Motor-Simulator für Bench-Testing ohne echtes Fahrzeug
+ * ==============================================================================
  */
 
-#include <SPI.h>
-#include <TFT_eSPI.h>       // Display Library (muss in der User_Setup.h für CYD konfiguriert sein!)
-#include <Adafruit_MAX31855.h> // Library für EGT Sensor
+#include "Config.h"
+#include "Sensors.h"
+#include "KW1281.h"
+#include "Simulator.h"
+#include "DisplayUI.h"
 
-// --- PINS CYD (Cheap Yellow Display) Erweiterungs-Pins ---
-// Ladedrucksensor (3-Bar MAP z.B. Bosch) an einem freien analogen Pin
-#define PIN_MAP_SENSOR  35  
+// Globale Instanzen
+SensorData telemetryData;
+SensorManager sensors;
+KW1281Protocol kw1281;
+MotorSimulator simulator;
+DisplayUI ui;
 
-// MAX31855 (Abgastemperatur) SPI Pins (Beispiel für freie CYD Pins)
-#define MAXDO   22 
-#define MAXCS   21 
-#define MAXCLK  27 
-
-// K-Line (L9637D Transceiver) an Serial2 des ESP32
-#define PIN_KLINE_RX 16
-#define PIN_KLINE_TX 17
-
-// --- SENSOR-OBJEKTE ---
-TFT_eSPI tft = TFT_eSPI(); 
-Adafruit_MAX31855 thermocouple(MAXCLK, MAXCS, MAXDO);
-
-// --- VARIABLEN ---
-float boostPressure = 0.0;
-float exhaustTemp = 0.0;
-int rpm = 0;       // Kommt später über K-Line
-int coolant = 0;   // Kommt später über K-Line
-
-// Timer für non-blocking Updates
-unsigned long lastDisplayUpdate = 0;
-unsigned long lastSensorUpdate = 0;
+// Timer für Hauptschleife
+unsigned long lastSensorSampleTime = 0;
+unsigned long lastDisplayRefreshTime = 0;
+unsigned long lastSerialLogTime = 0;
 
 void setup() {
-  Serial.begin(115200); // Debug Konsole PC
-  
-  // 1. Display Initialisieren
-  tft.init();
-  tft.setRotation(1); // Querformat (Landscape)
-  tft.fillScreen(TFT_BLACK);
-  
-  // UI Rahmen zeichnen
-  drawUI();
+    Serial.begin(115200);
+    delay(200);
+    Serial.println("\n=======================================================");
+    Serial.println("  VW 1.8T (AGU) Motronic M3.8.3 ESP32 CYD Multi-Gauge  ");
+    Serial.println("=======================================================");
 
-  // 2. EGT Sensor Initialisieren
-  if (!thermocouple.begin()) {
-    Serial.println("Fehler: MAX31855 nicht gefunden!");
-  }
+    // Datenstruktur initialisieren
+    memset(&telemetryData, 0, sizeof(SensorData));
+    telemetryData.currentTheme = THEME_CLASSIC_QUAD;
+    telemetryData.boostPeakBar = -1.0f;
+    telemetryData.exhaustTempPeak = 0.0f;
 
-  // 3. K-Line / KW1281 Hardware Serial2 vorbereiten
-  // VW AGU nutzt 10400 Baud für die Diagnose (KW1281)
-  Serial2.begin(10400, SERIAL_8N1, PIN_KLINE_RX, PIN_KLINE_TX);
-  Serial.println("System gestartet. K-Line bereit (10400 Baud).");
+    // 1. Display und UI initialisieren
+    ui.begin();
+    Serial.println("[Setup] Display initialisiert.");
+
+    // 2. Analoge & SPI Sensoren initialisieren (inkl. Auto-Zeroing)
+    sensors.begin();
+    Serial.println("[Setup] Sensoren kalibriert & bereit.");
+
+    // 3. KW1281 K-Line Diagnose initialisieren
+    #if !ENABLE_SIMULATION
+        kw1281.begin();
+        Serial.println("[Setup] K-Line (KW1281) Protokoll gestartet.");
+    #else
+        simulator.begin();
+        Serial.println("[Setup] SIMULATOR-MODUS AKTIV - Generiere synthetische Motordaten.");
+    #endif
+
+    Serial.println("[Setup] System betriebsbereit!\n");
 }
 
 void loop() {
-  unsigned long currentMillis = millis();
+    unsigned long now = millis();
 
-  // Sensoren alle 50ms (20Hz) auslesen
-  if (currentMillis - lastSensorUpdate >= 50) {
-    readSensors();
-    // Hier später readKLine() aufrufen
-    lastSensorUpdate = currentMillis;
-  }
+    // --------------------------------------------------------------------------
+    // 1. SENSOR- & DIAGNOSE-SAMPLING (40 Hz / alle 25ms)
+    // --------------------------------------------------------------------------
+    if (now - lastSensorSampleTime >= (1000 / SENSOR_SAMPLE_RATE_HZ)) {
+        lastSensorSampleTime = now;
 
-  // Display alle 100ms (10Hz) updaten (verhindert Flackern)
-  if (currentMillis - lastDisplayUpdate >= 100) {
-    updateDisplay();
-    lastDisplayUpdate = currentMillis;
-  }
-}
+        #if ENABLE_SIMULATION
+            // Testumgebung: Dynamischer Motor- & Sensordaten-Generator
+            simulator.update(telemetryData);
+        #else
+            // Reales Fahrzeug: Externe Sensoren & K-Line abfragen
+            sensors.update(telemetryData);
+            kw1281.update(telemetryData);
+        #endif
+    }
 
-// --- SENSOR LOGIK ---
-void readSensors() {
-  // 1. MAP Sensor lesen (Ladedruck)
-  // Ein 3-Bar Sensor hat typischerweise: 0.5V = 0.2 Bar (Absolut), 4.5V = 3.0 Bar (Absolut)
-  // Umgebungsdruck (1 Bar) abziehen für reinen Ladedruck (Relativdruck).
-  int rawADC = analogRead(PIN_MAP_SENSOR);
-  float voltage = (rawADC / 4095.0) * 3.3; 
-  // (Hinweis: Die ESP32 ADC-Kurve ist nicht linear, in der Praxis muss man das noch leicht kalibrieren)
-  
-  // Dummy-Rechnung: (voltage / max_voltage) * max_pressure - atmosphärischer Druck
-  float absolutePressure = (voltage / 5.0) * 3.0; // 5V Sensor am Spannungsteiler oder 3.3V angepasst
-  boostPressure = absolutePressure - 1.013;       // 1.013 bar Atmosphärendruck abziehen
-  if(boostPressure < -1.0) boostPressure = -1.0;  // Max Unterdruck
+    // --------------------------------------------------------------------------
+    // 2. DISPLAY RENDERING & TOUCH (20 Hz / alle 50ms)
+    // --------------------------------------------------------------------------
+    if (now - lastDisplayRefreshTime >= (1000 / DISPLAY_FPS_TARGET)) {
+        lastDisplayRefreshTime = now;
 
-  // 2. EGT Sensor lesen
-  exhaustTemp = thermocouple.readCelsius();
-  
-  // (Zum Testen ohne echtes Auto: Dummy-Werte generieren)
-  if (isnan(exhaustTemp)) exhaustTemp = 0.0;
-  
-  // Fake-Werte für RPM & Coolant, bis KW1281 läuft
-  rpm = random(2800, 3000); 
-  coolant = 90;
-}
+        // Touchscreen prüfen (kurzer Tipp = nächstes Theme, langer Druck = Peak-Reset)
+        ui.checkTouch(telemetryData);
 
-// --- UI LAYOUT ZEICHNEN (Einmalig) ---
-void drawUI() {
-  tft.drawFastHLine(0, 120, 320, TFT_WHITE); // Horizontale Linie Mitte
-  tft.drawFastVLine(160, 0, 240, TFT_WHITE); // Vertikale Linie Mitte
+        // Aktuelles Layout rendern
+        ui.update(telemetryData);
+    }
 
-  // Labels
-  tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  tft.setTextDatum(TC_DATUM); // Top Center
-  
-  tft.drawString("Ladedruck (bar)", 80, 10, 2);
-  tft.drawString("Abgastemp (C)", 240, 10, 2);
-  tft.drawString("Drehzahl (U/min)", 80, 130, 2);
-  tft.drawString("Kuehlwasser (C)", 240, 130, 2);
-}
-
-// --- WERTE AKTUALISIEREN ---
-void updateDisplay() {
-  tft.setTextColor(TFT_GREEN, TFT_BLACK); // Text Grün, Hintergrund Schwarz (überschreibt alte Werte)
-  tft.setTextDatum(MC_DATUM); // Middle Center
-
-  // 1. Ladedruck (Oben Links) - Textgröße groß (Font 4 oder 6)
-  char boostStr[10];
-  dtostrf(boostPressure, 4, 2, boostStr); // Format: x.xx
-  tft.drawString(boostStr, 80, 70, 6);
-
-  // 2. EGT (Oben Rechts) - Rot wenn über 900 Grad
-  if(exhaustTemp > 900) tft.setTextColor(TFT_RED, TFT_BLACK);
-  else tft.setTextColor(TFT_ORANGE, TFT_BLACK);
-  tft.drawNumber((int)exhaustTemp, 240, 70, 6);
-
-  // 3. RPM (Unten Links)
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-  tft.drawNumber(rpm, 80, 190, 6);
-
-  // 4. Wasser (Unten Rechts)
-  if(coolant > 100) tft.setTextColor(TFT_RED, TFT_BLACK);
-  else tft.setTextColor(TFT_BLUE, TFT_BLACK);
-  tft.drawNumber(coolant, 240, 190, 6);
+    // --------------------------------------------------------------------------
+    // 3. SERIAL TELEMETRIE LOGGING (1 Hz / alle 1000ms auf USB Konsole)
+    // --------------------------------------------------------------------------
+    if (now - lastSerialLogTime >= 1000) {
+        lastSerialLogTime = now;
+        Serial.printf("[Telemetrie] Boost: %.2f bar (Peak: %.2f) | EGT: %.0f C | LLK: %.1f C | RPM: %d | Coolant: %.0f C | K-Line: %s\n",
+                      telemetryData.boostBar,
+                      telemetryData.boostPeakBar,
+                      telemetryData.exhaustTemp,
+                      telemetryData.chargeAirTemp,
+                      telemetryData.ecuRpm,
+                      telemetryData.ecuCoolantTemp,
+                      (telemetryData.klineConnected ? "ONLINE" : "OFFLINE"));
+    }
 }

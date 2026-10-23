@@ -9,192 +9,116 @@
 
 Ein multifunktionales digitales Zusatzinstrument für Fahrzeuge der VAG-Gruppe mit dem beliebten **1.8T 20V (AGU)** Motor und **Bosch Motronic M3.8.3** Steuergerät (z. B. VW Golf 4, Audi A3 8L, Škoda Octavia 1U). 
 
-Basierend auf dem kostengünstigen **ESP32 CYD ("Cheap Yellow Display" / ESP32-2432S028)** vereint dieses Projekt echte analoge Sensormessungen (Ladedruck, Abgastemperatur) mit Live-Motordaten direkt aus dem Steuergerät über die **K-Line (KW1281-Protokoll)**.
+Basierend auf dem kostengünstigen **ESP32 CYD ("Cheap Yellow Display" / ESP32-2432S028)** vereint dieses Projekt echte analoge Sensormessungen (Ladedruck, Abgastemperatur EGT, Ladelufttemperatur) mit nativen Live-Motordaten direkt aus dem Steuergerät über die **K-Line (KW1281-Protokoll)**.
 
 ---
 
-## 📸 Display-Layout (320x240 Landscape)
+## 🎨 4 Umschaltbare Display-Design Studien
 
-Das Display ist in 4 übersichtliche Quadranten unterteilt:
+Durch einfaches Tippen auf den Touchscreen kann jederzeit zwischen **4 vollwertigen Design-Themen** gewechselt werden:
 
 ```
 +-----------------------------------+-----------------------------------+
-|         LADEDRUCK (bar)           |          ABGASTEMP (°C)           |
-|                                   |                                   |
-|              1.25                 |               845                 |
-|                                   |     (wechselt zu ROT bei >900°C)  |
+| 1. CLASSIC QUAD (4-Kacheln)       | 2. SPORT CLUSTER (Rennsport)      |
+| Große Digits für Ladedruck, EGT,  | F1/GT3 Shift-Light Drehzahlband,  |
+| Ladeluft & Drehzahl/Wasser.       | riesiger Ladedruck, EGT-Balken.   |
 +-----------------------------------+-----------------------------------+
-|        DREHZAHL (U/min)           |         KUEHLWASSER (°C)          |
-|                                   |                                   |
-|              3200                 |                90                 |
-|      (über K-Line / KW1281)       |    (wechselt zu ROT bei >100°C)   |
+| 3. OEM+ GOLF 4 / AUDI A3          | 4. DATA MATRIX (8 Telemetrie-Boxen|
+| Original VW-Blaues Backlight mit  | High-Density Anzeige für Logging, |
+| roten VDO-Zeigern & MFA-Display.  | Zündwinkel, MAF, Motorlast etc.   |
 +-----------------------------------+-----------------------------------+
 ```
+
+> [!TIP]
+> **Interaktive Vorschau:** Eine interaktive Web-Simulation aller 4 Designs steht unter [`design_study/index.html`](design_study/index.html) bereit.
 
 ---
 
 ## 🚀 Features
 
 - **Echter Ladedruck (Boost)**:
-  - Da der 1.8T AGU ab Werk keinen Ladedrucksensor besitzt (reine Luftmassen-Steuerung), wird ein externer **3-Bar MAP-Sensor** (z. B. Bosch) präzise über einen analogen Pin eingelesen und in Relativdruck (Ladedruck in Bar) umgerechnet.
+  - Da der 1.8T AGU ab Werk keinen Ladedrucksensor besitzt (reine Luftmassen-Steuerung), wird ein externer **3-Bar MAP-Sensor** (z. B. Bosch 0 281 002 437) über einen analogen Pin eingelesen.
+  - **Auto-Zeroing:** Automatischer Nullpunktabgleich des Umgebungs-Barometerdrucks beim Einschalten der Zündung.
+  - **Peak-Hold:** Höchster erreichter Ladedruck wird kontinuierlich gespeichert.
+- **Ladelufttemperatur (Charge Air Temp / IAT)**:
+  - Schneller NTC-Temperatursensor (z. B. Bosch M12) nach dem Ladeluftkühler / vor der Drosselklappe.
+  - Steinhart-Hart / Beta-Berechnung mit Alarmierung bei Heat-Soak (> 60 °C).
+  - Automatischer Fallback auf die native Steuergeräte-Ansauglufttemperatur via OBD.
 - **Abgastemperatur (EGT)**:
-  - Anschluss für ein **K-Typ Thermoelement** über den **MAX31855** SPI-Verstärker.
-  - Dynamische Farbwarnung: Schaltet bei kritischen Temperaturen (**> 900 °C**) automatisch von Orange auf Warnrot um.
+  - Anschluss für ein **K-Typ Thermoelement** über den **Adafruit MAX31855** SPI-Verstärker.
+  - Dynamische Warnstufen: Gelb ab 900 °C, Alarmrot ab 950 °C.
 - **K-Line / KW1281 Diagnose-Schnittstelle**:
-  - Nutzt `Serial2` des ESP32 mit 10.400 Baud zur Kommunikation mit dem Steuergerät via L9637D K-Line Transceiver.
-  - Auslesen nativer ECU-Parameter wie Drehzahl (RPM) und Kühlmitteltemperatur.
-- **Flackerfreie Anzeige**:
-  - Non-blocking Architektur (`millis()`-Timer): Sensoren werden mit **20 Hz (50 ms)** erfasst, das Display wird mit **10 Hz (100 ms)** aktualisiert.
+  - Vollständiger KW1281 Protokollstack mit 5-Baud Slow-Init (Adresse `0x01` Motor-ECU).
+  - Zyklisches Auslesen der Messwertblöcke **MWB 001, MWB 002 und MWB 003**:
+    - Motordrehzahl (RPM)
+    - Kühlmitteltemperatur (°C)
+    - Luftmasse (MAF g/s)
+    - Motorlast (%)
+    - Zündwinkel & Bordspannung (V)
+- **Bench-Testumgebung & Simulator**:
+  - Umschaltbarer Firmware-Simulator (`#define ENABLE_SIMULATION true`) für Tests ohne Auto.
+  - Eigener Python KW1281 ECU-Simulator (`tools/ecu_simulator.py`) für Hardware-Tests am Schreibtisch.
 
 ---
 
-## 🛠 Benötigte Hardware
+## 📁 Projektstruktur
 
-| Komponente | Beschreibung | Empfehlung / Hinweis |
-| :--- | :--- | :--- |
-| **ESP32 CYD** | ESP32-2432S028R | 2.8" TFT (320x240) mit Touchscreen & ESP32 |
-| **MAP-Sensor** | 3-Bar oder 4-Bar Drucksensor | z. B. Bosch 0 281 002 437 o. Ä. (benötigt Spannungsteiler auf 3.3V) |
-| **EGT-Verstärker** | MAX31855 Modul | SPI-Interface für K-Typ Thermoelement |
-| **K-Typ Sensor** | Abgastemperaturfühler | M10x1 Einschweißgewinde für Krümmer/Downpipe |
-| **K-Line Transceiver** | L9637D, SI9241A oder ISO-Board | Zur Anbindung von Pin 7 der OBD2-Buchse (12V Logik auf 3.3V) |
-| **Spannungsversorgung** | 12V ➔ 5V Step-Down Konverter | Kfz-tauglich mit Filterung (z. B. LM2596 oder fertiger USB-Wandler) |
-| **Widerstände** | Spannungsteiler für MAP-Signal | z. B. 2.2 kΩ und 3.3 kΩ (um max. 5V auf ~3.0V zu begrenzen) |
+```
+Motronic-OBD-Gauge/
+├── AGU_ESP32_Gauge/
+│   ├── AGU_ESP32_Gauge.ino       # Hauptsketch mit Setup- & Loop-Routinen
+│   ├── Config.h                  # Pins, Kalibrierung, Alarmschwellen, Theme-Konfiguration
+│   ├── Sensors.h & .cpp          # MAP-Sensor, MAX31855, Ladeluft-NTC & Filterung
+│   ├── KW1281.h & .cpp           # K-Line KW1281 Diagnoseprotokoll-Implementierung
+│   ├── Simulator.h & .cpp        # Realistischer Motor- und Fahrzyklus-Simulator
+│   └── DisplayUI.h & .cpp        # Render-Engine für alle 4 Design-Themes & Touch
+├── tools/
+│   └── ecu_simulator.py          # Python PC-Simulator für KW1281 K-Line Tests
+├── docs/
+│   ├── SCHALTPLAN.md             # Vollständiger Verdrahtungsplan aller Sensoren
+│   └── TESTUMGEBUNG.md           # Anleitung für Simulation & Bench-Testing
+├── design_study/
+│   └── index.html                # Interaktive Web-Designstudie & Sensor-Controller
+├── .gitignore
+├── LICENSE
+└── README.md
+```
 
 ---
 
-## 📌 Pinbelegung (ESP32 CYD)
+## 🛠 Benötigte Hardware & Anschlüsse
 
-| Signal / Sensor | ESP32 Pin | CYD Header / Hinweis |
+| Komponente | Beschreibung | ESP32 CYD Pin |
 | :--- | :--- | :--- |
-| **MAP-Sensor (Signal)** | `GPIO 35` | Analoger Eingang (ADC1) – **Spannungsteiler nutzen!** |
-| **MAX31855 DO (Data Out)** | `GPIO 22` | SPI MISO |
-| **MAX31855 CS (Chip Select)**| `GPIO 21` | SPI Chip Select |
-| **MAX31855 CLK (Clock)** | `GPIO 27` | SPI Clock |
-| **K-Line RX** | `GPIO 16` | ESP32 Hardware `Serial2` RX (vom Transceiver) |
-| **K-Line TX** | `GPIO 17` | ESP32 Hardware `Serial2` TX (zum Transceiver) |
-| **Display (TFT)** | *intern* | Fest auf dem CYD verdrahtet (über `TFT_eSPI`) |
+| **ESP32 CYD** | ESP32-2432S028R mit 2.8" TFT & Touch | – |
+| **MAP-Sensor** | 3-Bar Drucksensor (z. B. Bosch 0 281 002 437) | `GPIO 35` (über Spannungsteiler 5V -> 3.3V) |
+| **Ladeluft-NTC** | Schneller NTC-Sensor nach Ladeluftkühler | `GPIO 34` (mit 2.2 kΩ Pullup zu 3.3V) |
+| **MAX31855 Modul** | SPI-Verstärker für K-Typ Thermoelement | `CS: 21` / `DO: 22` / `CLK: 27` |
+| **K-Line Transceiver** | L9637D oder Si9241A Board an OBD Pin 7 | `RX: GPIO 16` / `TX: GPIO 17` |
+| **Spannungsversorgung** | 12V ➔ 5V Kfz Step-Down Wandler | Micro-USB / 5V Header am CYD |
 
 > [!WARNING]
-> **5V-Sensoren und Kfz-Bordnetz:**  
-> Die analogen Eingänge des ESP32 vertragen **maximal 3.3V**! Ein 5V MAP-Sensor darf **niemals direkt** mit dem GPIO verbunden werden. Verwende zwingend einen geeigneten Spannungsteiler oder Level-Shifter.
+> Für Details zur Pegelanpassung (Spannungsteiler für MAP-Sensor) siehe den ausführlichen [Schaltplan](docs/SCHALTPLAN.md).
 
 ---
 
-## 🔌 Schaltplan-Übersicht
-
-```mermaid
-flowchart TD
-    subgraph Kfz ["Fahrzeug / Motorraum"]
-        OBD["OBD-2 Buchse (Pin 7 K-Line / Pin 4/5 GND / Pin 16 12V)"]
-        MAP["Bosch MAP-Sensor (5V versorgt)"]
-        TC["K-Typ Thermoelement (Krümmer/Abgas)"]
-        BAT["Kfz-Bordnetz (12V - 14.4V)"]
-    end
-
-    subgraph Pegelanpassung ["Schutz & Pegelwandlung"]
-        L9637["K-Line Transceiver (z. B. L9637D)"]
-        DIV["Spannungsteiler (5V -> 3.3V)"]
-        MAX["Adafruit MAX31855 (SPI)"]
-        STEPDOWN["12V -> 5V Step-Down Wandler"]
-    end
-
-    subgraph CYD ["ESP32 CYD (ESP32-2432S028)"]
-        ESP["ESP32 Core"]
-        TFT["2.8 Zoll TFT Display (320x240)"]
-    end
-
-    BAT --> STEPDOWN --> CYD
-    OBD -->|K-Line Signal| L9637
-    L9637 -->|RX: GPIO 16 / TX: GPIO 17| ESP
-    MAP -->|0 - 5V Signal| DIV
-    DIV -->|0 - 3.3V Signal| ESP
-    TC --> MAX
-    MAX -->|SPI: GPIO 21, 22, 27| ESP
-    ESP --> TFT
-```
-
----
-
-## 💻 Software & Bibliotheken
-
-Folgende Bibliotheken werden in der Arduino IDE benötigt:
-
-1. **[TFT_eSPI](https://github.com/Bodmer/TFT_eSPI)** von Bodmer
-2. **[Adafruit MAX31855](https://github.com/adafruit/Adafruit-MAX31855-library)** von Adafruit
-
-### ⚙️ `TFT_eSPI` Konfiguration für das CYD
-
-Damit das Display korrekt angesteuert wird, muss die `User_Setup.h` im Ordner der `TFT_eSPI`-Bibliothek (unter `Arduino/libraries/TFT_eSPI/`) für das CYD (ESP32-2432S028) angepasst werden:
-
-```cpp
-#define ILI9341_2_DRIVER     // Oder ST7789 je nach CYD Revision
-#define TFT_WIDTH  240
-#define TFT_HEIGHT 320
-#define TFT_MISO 12
-#define TFT_MOSI 13
-#define TFT_SCLK 14
-#define TFT_CS   15
-#define TFT_DC    2
-#define TFT_RST  -1
-#define TFT_BL   21          // Backlight Pin
-```
-*(Alternativ kann die vordefinierte CYD-Setup-Datei eingebunden werden).*
-
----
-
-## 📦 Installation
+## 📦 Installation & Inbetriebnahme
 
 1. **Repository klonen:**
    ```bash
-   git clone https://github.com/<DEIN-BENUTZERNAME>/Motronic-OBD-Gauge.git
+   git clone https://github.com/Awsmqt/Motronic-OBD-Gauge.git
    ```
 2. **Arduino IDE vorbereiten:**
-   - Installiere das **ESP32 Board-Package** (über den Boardverwalter: `esp32` von Espressif Systems).
-   - Installiere die Bibliotheken `TFT_eSPI` und `Adafruit MAX31855`.
-3. **Board-Einstellungen:**
+   - Installiere das **ESP32 Board-Package** (`esp32` von Espressif Systems).
+   - Installiere die Bibliotheken:
+     - `TFT_eSPI` (Bodmer)
+     - `Adafruit MAX31855 library` (Adafruit)
+3. **`TFT_eSPI` Konfiguration:**
+   - In der Datei `User_Setup.h` der TFT_eSPI Bibliothek sicherstellen, dass die CYD Pins (ILI9341 / ST7789) aktiviert sind.
+4. **Flashen:**
+   - Öffne [`AGU_ESP32_Gauge/AGU_ESP32_Gauge.ino`](AGU_ESP32_Gauge/AGU_ESP32_Gauge.ino) in der Arduino IDE.
    - Board: `ESP32 Dev Module`
-   - Upload Speed: `115200` oder `921600`
-   - Flash Frequency: `80MHz`
-   - Partition Scheme: `Default 4MB with spiffs`
-4. **Sketch öffnen & hochladen:**
-   - Öffne `AGU_ESP32_Gauge.ino` in der Arduino IDE.
-   - Verbinde das CYD per Micro-USB / USB-C und klicke auf **Upload**.
-
----
-
-## 🧮 MAP-Sensor Kalibrierung
-
-In `readSensors()` ist die Formel für den Ladedruck hinterlegt:
-
-$$\text{Absolutdruck} = \frac{U_{\text{gemessen}}}{U_{\text{max}}} \cdot P_{\text{max}}$$
-$$\text{Ladedruck (relativ)} = \text{Absolutdruck} - 1.013\,\text{bar}$$
-
-> [!NOTE]
-> Je nachdem, welchen Spannungsteiler du für den ADC verwendest und welcher MAP-Sensor verbaut ist (0.2–3.0 bar oder 0.5–4.0 bar), müssen die Koeffizienten in `readSensors()` ggf. an deine Sensor-Kennlinie angepasst werden.
-
----
-
-## 🗺 Roadmap / Zukünftige Erweiterungen
-
-- [ ] **KW1281 Protokoll-Stack vervollständigen**:
-  - Implementierung des 5-Baud Slow-Init (0x01 Motor-ECU)
-  - Abfrage der Messwertblöcke (MWB 001 / 002 / 003 für exakte Drehzahl, Ansauglufttemperatur, Zündwinkel, Einspritzzeit)
-  - Keep-Alive / Acknowledgment-Handling
-- [ ] **Touchscreen-Unterstützung**:
-  - Umschalten zwischen verschiedenen Ansichten (z. B. 4er-Grid, Einzelwert-Großanzeige, Minimal-/Maximalwerte)
-- [ ] **Fehlerspeicher (DTC)**:
-  - Auslesen und Löschen des Motorsteuergeräte-Fehlerspeichers per Touch-Befehl
-- [ ] **Gehäuse**:
-  - STL-Dateien für einen 3D-Druck-Einsatz (z. B. für die mittlere Lüftungsdüse im Golf 4 / A3 8L)
-
----
-
-## ⚠️ Disclaimer & Sicherheitshinweis
-
-Dieses Projekt dient ausschließlich zu Hobby- und Tuning-Zwecken auf abgesperrten Strecken oder zu Testzwecken.
-- Arbeiten an der Fahrzeugelektronik und am Abgastrakt erfordern Fachkenntnisse.
-- Achte immer auf eine saubere Absicherung der Zuleitungen im Fahrzeug.
-- Der Entwickler übernimmt keinerlei Haftung für Schäden am Fahrzeug, Steuergerät oder Motor!
+   - Klicke auf **Upload**.
 
 ---
 

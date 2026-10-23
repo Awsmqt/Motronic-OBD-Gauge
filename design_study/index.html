@@ -1,0 +1,520 @@
+<!-- Kopie der interaktiven Design-Studie im Repository -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>VW 1.8T (AGU) OBD Display - Design Studien & Simulator</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @font-face {
+      font-family: 'Segment7';
+      src: local('Consolas'), local('Monaco'), monospace;
+    }
+    .lcd-screen {
+      width: 640px;
+      height: 480px;
+      position: relative;
+      background-color: #000;
+      border-radius: 12px;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.8), 0 10px 25px rgba(0,0,0,0.5);
+      image-rendering: pixelated;
+      overflow: hidden;
+      user-select: none;
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 antialiased p-6 flex flex-col items-center min-h-screen">
+
+  <div class="max-w-4xl w-full mb-6 text-center">
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-400 mb-3">
+      <span>🚗 VW 1.8T AGU (Motronic M3.8.3)</span>
+      <span>•</span>
+      <span>ESP32 CYD (320x240 TFT)</span>
+    </div>
+    <h1 class="text-2xl font-bold tracking-tight">Display-Design Studien & Interaktive Testumgebung</h1>
+    <p class="text-zinc-400 text-sm mt-1">
+      Wähle zwischen den 4 Layout-Konzepten und teste die Sensor-Reaktion, Ladeluft-Erwärmung und Alarmschwellen live.
+    </p>
+  </div>
+
+  <div class="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 flex flex-col items-center">
+      <div class="p-4 bg-zinc-900 border-4 border-zinc-700 rounded-2xl shadow-2xl relative">
+        <div class="text-[12px] font-mono text-zinc-500 mb-2 flex justify-between items-center px-1">
+          <span>ESP32-2432S028 (CYD 2.8" TFT)</span>
+          <span id="fps-badge" class="text-emerald-400">● 20 FPS (Smooth)</span>
+        </div>
+        <div id="screen" class="lcd-screen relative transition-colors duration-300">
+          <canvas id="displayCanvas" width="640" height="480" class="w-full h-full block"></canvas>
+        </div>
+        <div class="mt-2 text-center text-xs text-zinc-500">
+          💡 <em>Klicke auf das Display, um direkt das nächste Design-Theme aufzurufen!</em>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-4">
+        <button onclick="setTheme(0)" id="btn-theme-0" class="theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-cyan-500 bg-cyan-600 text-white shadow-sm transition">
+          1. Classic Quad
+        </button>
+        <button onclick="setTheme(1)" id="btn-theme-1" class="theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition">
+          2. Sport Cluster
+        </button>
+        <button onclick="setTheme(2)" id="btn-theme-2" class="theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition">
+          3. OEM+ Golf 4
+        </button>
+        <button onclick="setTheme(3)" id="btn-theme-3" class="theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition">
+          4. Data Matrix
+        </button>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-4">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 shadow-sm">
+        <h3 class="text-sm font-semibold mb-3 flex items-center justify-between">
+          <span>⚡ Fahrzustands-Presets</span>
+          <button onclick="toggleAutoSim()" id="btn-auto-sim" class="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
+            Auto: AN
+          </button>
+        </h3>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <button onclick="applyPreset('idle')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800/60 transition">
+            <span class="font-bold block">1. Standgas</span>
+            <span class="text-zinc-400">840 RPM | -0.68 bar</span>
+          </button>
+          <button onclick="applyPreset('cruising')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800/60 transition">
+            <span class="font-bold block">2. Cruisen</span>
+            <span class="text-zinc-400">2400 RPM | -0.2 bar</span>
+          </button>
+          <button onclick="applyPreset('wot')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800/60 transition">
+            <span class="font-bold block">3. Volllast (WOT)</span>
+            <span class="text-zinc-400">5800 RPM | 1.35 bar</span>
+          </button>
+          <button onclick="applyPreset('alarm')" class="p-2 text-left rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition">
+            <span class="font-bold block">4. Overboost / EGT</span>
+            <span class="text-red-300">1.50 bar | 955°C</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 shadow-sm text-xs flex flex-col gap-3">
+        <h3 class="font-semibold text-sm">🎛 Manuelle Sensorsteuerung</h3>
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Ladedruck:</span>
+            <span id="val-boost" class="text-cyan-400 font-bold">1.25 bar</span>
+          </div>
+          <input type="range" id="slider-boost" min="-1.0" max="2.0" step="0.05" value="1.25" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Abgastemp (EGT):</span>
+            <span id="val-egt" class="text-orange-400 font-bold">840 °C</span>
+          </div>
+          <input type="range" id="slider-egt" min="300" max="1050" step="10" value="840" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Ladeluft (LLK IAT):</span>
+            <span id="val-iat" class="text-emerald-400 font-bold">34.5 °C</span>
+          </div>
+          <input type="range" id="slider-iat" min="15" max="85" step="0.5" value="34.5" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Drehzahl:</span>
+            <span id="val-rpm" class="text-white font-bold">4200 RPM</span>
+          </div>
+          <input type="range" id="slider-rpm" min="800" max="7000" step="100" value="4200" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Kühlwasser:</span>
+            <span id="val-coolant" class="text-blue-400 font-bold">90 °C</span>
+          </div>
+          <input type="range" id="slider-coolant" min="50" max="120" step="1" value="90" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('displayCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let state = {
+      theme: 0,
+      boost: 1.25,
+      boostPeak: 1.38,
+      egt: 845,
+      egtPeak: 890,
+      iat: 34.5,
+      rpm: 4200,
+      coolant: 90,
+      maf: 115.0,
+      load: 85,
+      ignition: 18.0,
+      battery: 13.8,
+      autoSim: true,
+      simTime: 0
+    };
+
+    document.getElementById('screen').addEventListener('click', () => {
+      setTheme((state.theme + 1) % 4);
+    });
+
+    function setTheme(t) {
+      state.theme = t;
+      for (let i = 0; i < 4; i++) {
+        const btn = document.getElementById(`btn-theme-0`.replace('0', i));
+        if (i === t) {
+          btn.className = "theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-cyan-500 bg-cyan-600 text-white shadow-sm transition";
+        } else {
+          btn.className = "theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition";
+        }
+      }
+    }
+
+    function toggleAutoSim() {
+      state.autoSim = !state.autoSim;
+      const btn = document.getElementById('btn-auto-sim');
+      btn.innerText = state.autoSim ? "Auto: AN" : "Auto: AUS";
+      btn.className = state.autoSim 
+        ? "text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono"
+        : "text-xs px-2 py-0.5 rounded bg-zinc-700 text-zinc-300 font-mono";
+    }
+
+    function onManualInput() {
+      state.autoSim = false;
+      document.getElementById('btn-auto-sim').innerText = "Auto: AUS";
+      document.getElementById('btn-auto-sim').className = "text-xs px-2 py-0.5 rounded bg-zinc-700 text-zinc-300 font-mono";
+      state.boost = parseFloat(document.getElementById('slider-boost').value);
+      state.egt = parseInt(document.getElementById('slider-egt').value);
+      state.iat = parseFloat(document.getElementById('slider-iat').value);
+      state.rpm = parseInt(document.getElementById('slider-rpm').value);
+      state.coolant = parseInt(document.getElementById('slider-coolant').value);
+
+      if (state.boost > state.boostPeak) state.boostPeak = state.boost;
+      if (state.egt > state.egtPeak) state.egtPeak = state.egt;
+      updateUiLabels();
+    }
+
+    function applyPreset(p) {
+      state.autoSim = false;
+      document.getElementById('btn-auto-sim').innerText = "Auto: AUS";
+      document.getElementById('btn-auto-sim').className = "text-xs px-2 py-0.5 rounded bg-zinc-700 text-zinc-300 font-mono";
+
+      if (p === 'idle') {
+        state.boost = -0.68; state.egt = 420; state.iat = 24.0; state.rpm = 840; state.coolant = 89; state.load = 16; state.maf = 2.8;
+      } else if (p === 'cruising') {
+        state.boost = -0.25; state.egt = 590; state.iat = 28.0; state.rpm = 2400; state.coolant = 90; state.load = 38; state.maf = 26.0;
+      } else if (p === 'wot') {
+        state.boost = 1.35; state.egt = 880; state.iat = 42.0; state.rpm = 5800; state.coolant = 92; state.load = 145; state.maf = 155.0;
+      } else if (p === 'alarm') {
+        state.boost = 1.52; state.egt = 955; state.iat = 65.0; state.rpm = 6400; state.coolant = 108; state.load = 160; state.maf = 175.0;
+      }
+
+      if (state.boost > state.boostPeak) state.boostPeak = state.boost;
+      if (state.egt > state.egtPeak) state.egtPeak = state.egt;
+
+      document.getElementById('slider-boost').value = state.boost;
+      document.getElementById('slider-egt').value = state.egt;
+      document.getElementById('slider-iat').value = state.iat;
+      document.getElementById('slider-rpm').value = state.rpm;
+      document.getElementById('slider-coolant').value = state.coolant;
+      updateUiLabels();
+    }
+
+    function updateUiLabels() {
+      document.getElementById('val-boost').innerText = `${state.boost >= 0 ? '+' : ''}${state.boost.toFixed(2)} bar`;
+      document.getElementById('val-egt').innerText = `${Math.round(state.egt)} °C`;
+      document.getElementById('val-iat').innerText = `${state.iat.toFixed(1)} °C`;
+      document.getElementById('val-rpm').innerText = `${Math.round(state.rpm)} RPM`;
+      document.getElementById('val-coolant').innerText = `${Math.round(state.coolant)} °C`;
+    }
+
+    function render() {
+      if (state.autoSim) {
+        state.simTime += 0.03;
+        const s = Math.sin(state.simTime * 0.8);
+        if (s > 0.2) {
+          state.rpm = 2500 + (s * 3800);
+          state.boost = -0.2 + (s * 1.55);
+          state.egt = 650 + (s * 260);
+          state.iat = 28 + (s * 20);
+        } else {
+          state.rpm = 1200 + (Math.abs(s) * 1200);
+          state.boost = -0.75 + (Math.abs(s) * 0.4);
+          state.egt = 480 + (Math.abs(s) * 100);
+          state.iat = 24 + (Math.abs(s) * 6);
+        }
+
+        if (state.boost > state.boostPeak) state.boostPeak = state.boost;
+        if (state.egt > state.egtPeak) state.egtPeak = state.egt;
+
+        document.getElementById('slider-boost').value = state.boost;
+        document.getElementById('slider-egt').value = state.egt;
+        document.getElementById('slider-iat').value = state.iat;
+        document.getElementById('slider-rpm').value = state.rpm;
+        updateUiLabels();
+      }
+
+      ctx.save();
+      if (state.theme === 0) renderThemeClassicQuad();
+      else if (state.theme === 1) renderThemeSportCluster();
+      else if (state.theme === 2) renderThemeOemPlus();
+      else if (state.theme === 3) renderThemeDataMatrix();
+
+      ctx.restore();
+      requestAnimationFrame(render);
+    }
+
+    function renderThemeClassicQuad() {
+      ctx.fillStyle = '#05070a';
+      ctx.fillRect(0, 0, 640, 480);
+      ctx.strokeStyle = '#222834';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, 240); ctx.lineTo(640, 240);
+      ctx.moveTo(320, 0); ctx.lineTo(320, 480);
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
+      ctx.fillText('LADEDRUCK (bar)', 160, 36);
+
+      let boostCol = state.boost < 0 ? '#ffffff' : (state.boost >= 1.45 ? '#ff2244' : '#00f0ff');
+      ctx.fillStyle = boostCol; ctx.font = '700 76px Segment7, monospace';
+      ctx.fillText((state.boost >= 0 ? '+' : '') + state.boost.toFixed(2), 160, 145);
+
+      ctx.fillStyle = '#556070'; ctx.font = '500 18px sans-serif';
+      ctx.fillText(`Peak: ${state.boostPeak.toFixed(2)} bar`, 160, 205);
+
+      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
+      ctx.fillText('ABGASTEMP EGT (°C)', 480, 36);
+
+      let egtCol = state.egt >= 950 ? '#ff2244' : (state.egt >= 900 ? '#ffd000' : '#ff9900');
+      ctx.fillStyle = egtCol; ctx.font = '700 76px Segment7, monospace';
+      ctx.fillText(`${Math.round(state.egt)}`, 480, 145);
+
+      ctx.fillStyle = '#556070'; ctx.font = '500 18px sans-serif';
+      ctx.fillText(`Max: ${Math.round(state.egtPeak)} °C`, 480, 205);
+
+      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
+      ctx.fillText('LADELUFT (LLK °C)', 160, 276);
+
+      let iatCol = state.iat >= 60 ? '#ff2244' : (state.iat >= 45 ? '#ffd000' : '#00ff88');
+      ctx.fillStyle = iatCol; ctx.font = '700 76px Segment7, monospace';
+      ctx.fillText(state.iat.toFixed(1), 160, 385);
+
+      ctx.fillStyle = '#556070'; ctx.font = '500 18px sans-serif';
+      ctx.fillText(`ECU MAF: ${(state.iat - 2).toFixed(0)} °C`, 160, 445);
+
+      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
+      ctx.fillText('DREHZAHL / WASSER', 480, 276);
+
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 76px Segment7, monospace';
+      ctx.fillText(`${Math.round(state.rpm)}`, 480, 385);
+
+      let coolCol = state.coolant > 105 ? '#ff2244' : '#00b4d8';
+      ctx.fillStyle = coolCol; ctx.font = '600 20px sans-serif';
+      ctx.fillText(`Wasser: ${Math.round(state.coolant)} °C`, 480, 445);
+    }
+
+    function renderThemeSportCluster() {
+      ctx.fillStyle = '#06080c';
+      ctx.fillRect(0, 0, 640, 480);
+
+      const segments = 16, segW = 34, segH = 24;
+      const activeSegs = Math.floor((state.rpm / 7000) * segments);
+
+      for (let i = 0; i < segments; i++) {
+        let col = '#1a202c';
+        if (i < activeSegs) col = i < 8 ? '#00ff66' : (i < 12 ? '#ffcc00' : '#ff1133');
+        ctx.fillStyle = col;
+        ctx.fillRect(20 + i * (segW + 4), 16, segW, segH);
+      }
+
+      ctx.fillStyle = '#ffffff'; ctx.font = '700 22px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${Math.round(state.rpm)} RPM`, 620, 72);
+
+      ctx.strokeStyle = '#333e50'; ctx.lineWidth = 2;
+      ctx.strokeRect(30, 95, 36, 260);
+
+      const egtH = Math.min(256, (state.egt / 1050) * 256);
+      let egtBarCol = state.egt > 900 ? '#ff1133' : '#ff8800';
+      ctx.fillStyle = egtBarCol;
+      ctx.fillRect(32, 95 + (260 - egtH - 2), 32, egtH);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff'; ctx.font = '600 16px sans-serif';
+      ctx.fillText('EGT', 48, 385);
+      ctx.fillStyle = egtBarCol; ctx.font = '700 20px monospace';
+      ctx.fillText(`${Math.round(state.egt)}°`, 48, 410);
+
+      const cx = 330, cy = 230;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 140, Math.PI * 0.75, Math.PI * 2.25);
+      ctx.strokeStyle = '#182030'; ctx.lineWidth = 18; ctx.stroke();
+
+      const boostPct = Math.max(0, Math.min(1, (state.boost + 1.0) / 3.0));
+      ctx.beginPath();
+      ctx.arc(cx, cy, 140, Math.PI * 0.75, Math.PI * (0.75 + boostPct * 1.5));
+      ctx.strokeStyle = state.boost > 1.45 ? '#ff1133' : '#00f0ff';
+      ctx.lineWidth = 18; ctx.stroke();
+
+      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
+      ctx.fillText('TURBO BOOST', cx, cy - 50);
+
+      ctx.fillStyle = state.boost > 1.45 ? '#ff1133' : '#00f0ff';
+      ctx.font = '700 84px Segment7, monospace';
+      ctx.fillText((state.boost >= 0 ? '+' : '') + state.boost.toFixed(2), cx, cy + 35);
+
+      ctx.fillStyle = '#ffffff'; ctx.font = '600 22px sans-serif';
+      ctx.fillText('BAR', cx, cy + 75);
+
+      ctx.fillStyle = '#556070'; ctx.font = '500 16px sans-serif';
+      ctx.fillText(`PEAK: ${state.boostPeak.toFixed(2)} BAR`, cx, cy + 105);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#121824';
+      ctx.fillRect(500, 95, 120, 80);
+      ctx.fillRect(500, 185, 120, 80);
+      ctx.fillRect(500, 275, 120, 80);
+
+      ctx.fillStyle = '#8a94a6'; ctx.font = '600 14px sans-serif';
+      ctx.fillText('LADELUFT', 510, 115);
+      ctx.fillStyle = state.iat > 50 ? '#ff1133' : '#00ff88'; ctx.font = '700 26px monospace';
+      ctx.fillText(`${state.iat.toFixed(1)}°`, 510, 150);
+
+      ctx.fillStyle = '#8a94a6'; ctx.font = '600 14px sans-serif';
+      ctx.fillText('WASSER', 510, 205);
+      ctx.fillStyle = '#00b4d8'; ctx.font = '700 26px monospace';
+      ctx.fillText(`${Math.round(state.coolant)}°`, 510, 240);
+
+      ctx.fillStyle = '#8a94a6'; ctx.font = '600 14px sans-serif';
+      ctx.fillText('LUFTMASSE', 510, 295);
+      ctx.fillStyle = '#ffd000'; ctx.font = '700 22px monospace';
+      ctx.fillText(`${state.maf.toFixed(0)} g/s`, 510, 330);
+    }
+
+    function renderThemeOemPlus() {
+      ctx.fillStyle = '#001440';
+      ctx.fillRect(0, 0, 640, 480);
+
+      drawVdoGauge(150, 240, 120, state.boost, -1.0, 2.0, 'BAR', 'LADEDRUCK');
+      drawVdoGauge(490, 240, 120, state.egt, 0, 1100, '°C', 'ABGASTEMP');
+
+      ctx.fillStyle = '#2b0000';
+      ctx.fillRect(270, 70, 100, 340);
+      ctx.strokeStyle = '#e60000';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(270, 70, 100, 340);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ff1a1a'; ctx.font = '700 16px sans-serif';
+      ctx.fillText('MFA 1.8T', 320, 100);
+
+      ctx.font = '500 13px sans-serif';
+      ctx.fillText('LADELUFT', 320, 140);
+      ctx.font = '700 24px monospace';
+      ctx.fillText(`${state.iat.toFixed(1)}°`, 320, 170);
+
+      ctx.font = '500 13px sans-serif';
+      ctx.fillText('KUEHLMITTEL', 320, 220);
+      ctx.font = '700 24px monospace';
+      ctx.fillText(`${Math.round(state.coolant)}°`, 320, 250);
+
+      ctx.font = '500 13px sans-serif';
+      ctx.fillText('DREHZAHL', 320, 305);
+      ctx.font = '700 24px monospace';
+      ctx.fillText(`${Math.round(state.rpm)}`, 320, 335);
+
+      ctx.font = '500 12px sans-serif';
+      ctx.fillText('U/min', 320, 355);
+    }
+
+    function drawVdoGauge(cx, cy, r, val, minV, maxV, unit, title) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.stroke();
+
+      for (let i = 0; i <= 10; i++) {
+        const ang = Math.PI * 0.75 + (i / 10) * (Math.PI * 1.5);
+        const x1 = cx + Math.cos(ang) * (r - 16);
+        const y1 = cy + Math.sin(ang) * (r - 16);
+        const x2 = cx + Math.cos(ang) * (r - 4);
+        const y2 = cy + Math.sin(ang) * (r - 4);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = i % 2 === 0 ? 3 : 1.5; ctx.stroke();
+      }
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff'; ctx.font = '600 18px sans-serif';
+      ctx.fillText(title, cx, cy - 35);
+      ctx.font = '500 14px sans-serif';
+      ctx.fillText(unit, cx, cy - 15);
+
+      const pct = Math.max(0, Math.min(1, (val - minV) / (maxV - minV)));
+      const needleAngle = Math.PI * 0.75 + pct * (Math.PI * 1.5);
+      const nx = cx + Math.cos(needleAngle) * (r - 20);
+      const ny = cy + Math.sin(needleAngle) * (r - 20);
+
+      ctx.beginPath();
+      ctx.moveTo(cx, cy); ctx.lineTo(nx, ny);
+      ctx.strokeStyle = '#ff1122'; ctx.lineWidth = 4;
+      ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 8; ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+      ctx.fillStyle = '#222222'; ctx.fill();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+
+      ctx.fillStyle = '#ff2233'; ctx.font = '700 24px monospace';
+      ctx.fillText(typeof val === 'number' && val % 1 !== 0 ? val.toFixed(2) : Math.round(val), cx, cy + 60);
+    }
+
+    function renderThemeDataMatrix() {
+      ctx.fillStyle = '#06080d';
+      ctx.fillRect(0, 0, 640, 480);
+
+      const w = 295, h = 98;
+      const x1 = 18, x2 = 327;
+      const yArr = [18, 130, 242, 354];
+
+      drawTelemetryBox(x1, yArr[0], w, h, 'LADEDRUCK (MAP)', (state.boost >= 0 ? '+' : '') + state.boost.toFixed(2), 'bar', state.boost > 1.45 ? '#ff2244' : '#00f0ff');
+      drawTelemetryBox(x2, yArr[0], w, h, 'BOOST PEAK', state.boostPeak.toFixed(2), 'bar', '#ffffff');
+
+      drawTelemetryBox(x1, yArr[1], w, h, 'ABGASTEMPERATUR', `${Math.round(state.egt)}`, '°C EGT', state.egt > 900 ? '#ff2244' : '#ff9900');
+      drawTelemetryBox(x2, yArr[1], w, h, 'LADELUFT (LLK)', state.iat.toFixed(1), '°C IAT', state.iat > 55 ? '#ff2244' : '#00ff88');
+
+      drawTelemetryBox(x1, yArr[2], w, h, 'LUFTMASSE (MAF)', state.maf.toFixed(1), 'g/s', '#ffd000');
+      drawTelemetryBox(x2, yArr[2], w, h, 'MOTORLAST', `${Math.round(state.load)}`, '%', '#ffffff');
+
+      drawTelemetryBox(x1, yArr[3], w, h, 'ZUENDWINKEL', `${state.ignition.toFixed(1)}`, '°KW', '#00f0ff');
+      drawTelemetryBox(x2, yArr[3], w, h, 'BORDSPANNUNG', `${state.battery.toFixed(1)}`, 'Volt', '#ffffff');
+    }
+
+    function drawTelemetryBox(x, y, w, h, label, val, unit, col) {
+      ctx.fillStyle = '#0f141f'; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#222d40'; ctx.lineWidth = 1.5; ctx.strokeRect(x, y, w, h);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#8392a8'; ctx.font = '600 15px sans-serif';
+      ctx.fillText(label, x + 14, y + 26);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = col; ctx.font = '700 42px Segment7, monospace';
+      ctx.fillText(val, x + w - 14, y + 68);
+
+      ctx.fillStyle = '#55657d'; ctx.font = '500 13px sans-serif';
+      ctx.fillText(unit, x + w - 14, y + 88);
+    }
+
+    updateUiLabels();
+    render();
+  </script>
+</body>
+</html>
