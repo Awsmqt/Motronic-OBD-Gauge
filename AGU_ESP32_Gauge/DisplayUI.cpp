@@ -1,4 +1,5 @@
 #include "DisplayUI.h"
+#include "DtcDatabase.h"
 #include <math.h>
 
 DisplayUI::DisplayUI()
@@ -446,13 +447,7 @@ void DisplayUI::renderMonitorMatrix(const SensorData &data) {
 // THEME 5: FEHLERCODE-DIAGNOSE (DTC READ & CLEAR)
 // ==============================================================================
 void DisplayUI::formatDtcCode(uint16_t raw, char *out) {
-    const char prefixes[] = {'P', 'C', 'B', 'U'};
-    char prefix = prefixes[(raw >> 14) & 0x03];
-    uint8_t d1 = (raw >> 12) & 0x03;
-    uint8_t d2 = (raw >> 8) & 0x0F;
-    uint8_t d3 = (raw >> 4) & 0x0F;
-    uint8_t d4 = raw & 0x0F;
-    snprintf(out, 12, "%c%d%X%X%X", prefix, d1, d2, d3, d4);
+    dtcFormatCode(raw, out, 12);
 }
 
 void DisplayUI::renderDtcDiag(SensorData &data) {
@@ -494,27 +489,30 @@ void DisplayUI::renderDtcDiag(SensorData &data) {
         char dtcBuf[16];
         char lineBuf[48];
 
-        int displayCount = data.dtcCount > 6 ? 6 : data.dtcCount;
+        int displayCount = data.dtcCount > 5 ? 5 : data.dtcCount;
         for (int i = 0; i < displayCount; i++) {
             formatDtcCode(data.dtcCodes[i], dtcBuf);
             uint8_t stat = data.dtcStatus[i];
 
-            const char *statText = "permanent";
-            if (stat & 0x20) statText = "sporadisch";
-            else if (stat & 0x40) statText = "statisch";
+            const char *dtcText;
+            const char *dtcCause;
+            dtcLookup(data.dtcCodes[i], &dtcText, &dtcCause);
 
-            snprintf(lineBuf, sizeof(lineBuf), "#%d: %s (0x%04X) - %s",
-                     i + 1, dtcBuf, data.dtcCodes[i], statText);
-
+            // Zeile 1: Code + Status (rot), Zeile 2: Klartext (hellgrau)
+            snprintf(lineBuf, sizeof(lineBuf), "%s - %s", dtcBuf, dtcStatusText(stat));
             tft.setTextDatum(TL_DATUM);
             tft.setTextColor(TFT_RED, TFT_BLACK);
-            tft.drawString(lineBuf, 12, yStart + i * 24, 2);
+            tft.drawString(lineBuf, 12, yStart + i * 26, 2);
+
+            snprintf(lineBuf, sizeof(lineBuf), "%.44s", dtcText);
+            tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+            tft.drawString(lineBuf, 120, yStart + i * 26 + 4, 1);
         }
 
-        if (data.dtcCount > 6) {
-            snprintf(lineBuf, sizeof(lineBuf), "... und %d weitere Fehler", data.dtcCount - 6);
+        if (data.dtcCount > 5) {
+            snprintf(lineBuf, sizeof(lineBuf), "... und %d weitere Fehler (siehe Web-Dashboard)", data.dtcCount - 5);
             tft.setTextColor(COLOR_ACCENT_YELLOW, TFT_BLACK);
-            tft.drawString(lineBuf, 12, yStart + 6 * 24, 1);
+            tft.drawString(lineBuf, 12, yStart + 5 * 26 + 4, 1);
         }
     }
 

@@ -237,10 +237,11 @@ class MotronicM383Simulator:
     def handle_dtc_request(self):
         """Simuliert Antwort auf Fehlercode-Abfrage (Titel 0x07)"""
         print("[*] Tester fordert DTCs an (Titel 0x07)...")
-        # Sende 2 simulierte DTCs: 0x4444 (sporadisch 0x20) und 0x0565 (statisch 0x60)
+        # Sende 2 simulierte DTCs als VAG-Dezimalcode (P-Nummer + 16384):
+        # 17476 = 0x4444 = P1092 (sporadisch 0x20), 16949 = 0x4235 = P0565 (statisch 0x60)
         dtc_data = bytearray([
             0x44, 0x44, 0x20,  # DTC 1: P1092 sporadisch
-            0x05, 0x65, 0x60   # DTC 2: P0565 statisch
+            0x42, 0x35, 0x60   # DTC 2: P0565 statisch
         ])
         self.send_block(dtc_data, 0xFC) # 0xFC = DTC response
 

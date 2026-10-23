@@ -151,6 +151,7 @@ struct SensorData {
     bool     dtcReadPending;          // Anforderung: DTCs auslesen
     bool     dtcClearPending;         // Anforderung: DTCs löschen
     bool     milSeen;                 // MIL-Leuchte: mind. 1 DTC vorhanden
+    uint32_t dtcLastReadMs;           // millis() des letzten erfolgreichen DTC-Lesens (0 = noch nie)
 
     // 6. LOGGER & SD-KARTE
     bool     sdCardReady;             // SD-Karte eingelegt und bereit

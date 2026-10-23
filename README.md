@@ -49,8 +49,11 @@ Das Display erzeugt einen eigenen automotiven **WiFi Access-Point**, sodass du w
 - **Netzwerk:** `VW-1.8T-AGU-Gauge` (Passwort: `motronic18t`)
 - **URL in Safari:** `http://192.168.4.1/`
 - **Features:**
+  - Vier Tabs: **Live**, **Graphen**, **Fehler**, **Display**
   - 4 Hz Live-Telemetrie (Ladedruck, Öldruck, Temperaturen, EGT, Lambda, Zündung, Klopfen)
-  - Fehlercodes (DTCs) direkt vom Handy auslesen und mit einem Klick löschen
+  - **Graphen:** Verlauf von Temperaturen, EGT, Drücken und Bordspannung (1/5/15 min, Wischen zeigt Werte), Export als CSV
+  - **Tuner-Aufzeichnung:** Start/Stopp-Logging mit 23 Spalten (Drehzahl, Last, Lambda, Zündwinkel, Klopfen, Ladedruck u.v.m.) als CSV für Chiptuner, wahlweise Standard (Komma/Punkt) oder Excel DE
+  - Fehlercodes (DTCs) direkt vom Handy auslesen und mit einem Klick löschen – **mit Klartext-Beschreibung und Prüfhinweisen** (z.B. `P0300 – Zündaussetzer erkannt`)
   - Peak-Werte (Max Boost, Max EGT, Min Öldruck) per Button zurücksetzen
   - Display-Theme aus der Ferne umschalten
   - Unterstützt Apples **"Zum Home-Bildschirm hinzufügen"** (startet im Vollbild ohne Safari-Adressleiste)
@@ -93,6 +96,7 @@ Motronic-OBD-Gauge/
 │   ├── Config.h                  # Pins, Alarmschwellen, WiFi- & Logger-Parameter
 │   ├── Sensors.h & .cpp          # Ladedruck, Öldruck, Öltemp, Ladeluft, EGT & Filter
 │   ├── KW1281.h & .cpp           # K-Line Diagnoseprotokoll (MWB 1-6 + DTCs lesen/löschen)
+│   ├── DtcDatabase.h & .cpp      # Fehlercode-Datenbank (VAG-Code → P-Code, Klartext, Ursachen)
 │   ├── Simulator.h & .cpp        # Realistischer Motor- und Fahrzyklus-Simulator
 │   ├── DisplayUI.h & .cpp        # 7 Themes inkl. DTC-Diagnose, Trend-Chart & ECU-Live
 │   ├── Logger.h & .cpp           # SD-Karten CSV Datenlogger (HSPI, 18 Parameter)

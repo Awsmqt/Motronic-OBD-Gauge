@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="1.8T AGU">
+<title>Web-UI Vorschau (simulierte Daten)</title>
+<style>
+  :root {
+    --asphalt: #0e1013; --panel: #171b21; --panel-hi: #1e242c; --line: #2a313b;
+    --cluster: #d8e6f5; --dim: #8393a5; --faint: #56626f;
+    --red: #ff3b30; --amber: #ffb020; --green: #4fd18b; --cyan: #5cc8ff; --blue: #4f8cff;
+    --num: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif;
+    --txt: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html { color-scheme: dark; }
+  body { background: var(--asphalt); color: var(--cluster); font-family: var(--txt); overflow-x: hidden;
+         padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) calc(30px + env(safe-area-inset-bottom, 0px)) env(safe-area-inset-left, 0px); }
+  .app { max-width: 560px; margin: 0 auto; }
+
+  .header { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px 10px; }
+  .header h1 { font-family: var(--num); font-size: 1.3rem; font-weight: 700; letter-spacing: .02em; color: #fff; }
+  .header .sub { font-size: .74rem; color: var(--dim); margin-top: 1px; }
+  .badge { font-size: .74rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; color: var(--green); background: rgba(79,209,139,.1); border: 1px solid rgba(79,209,139,.3); display: flex; gap: 6px; align-items: center; }
+  .badge i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; }
+  .badge.warn { color: var(--amber); background: rgba(255,176,32,.1); border-color: rgba(255,176,32,.3); }
+  .badge.off { color: var(--red); background: rgba(255,59,48,.1); border-color: rgba(255,59,48,.3); }
+
+  .alert-banner { display: none; background: linear-gradient(90deg, #b71c1c, #d32f2f); color: #fff; padding: 10px 14px; border-radius: 10px; margin: 0 12px 8px; font-weight: 700; font-size: .9rem; text-align: center; }
+
+  .mil { display: none; margin: 4px 12px 8px; padding: 10px 14px 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); align-items: center; gap: 12px; cursor: pointer; width: calc(100% - 24px); text-align: left; color: inherit; font: inherit; }
+  .mil.show { display: flex; }
+  .mil svg { flex: none; width: 34px; height: 34px; }
+  .mil .lamp-body { fill: currentColor; }
+  .mil .lamp { filter: drop-shadow(0 0 7px currentColor); color: var(--amber); }
+  .mil.static .lamp { color: var(--red); }
+  .mil.sporadic .lamp { animation: glimm 2.6s ease-in-out infinite; }
+  @keyframes glimm { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+  .mil strong { display: block; font-family: var(--num); font-size: 1.12rem; font-weight: 700; color: #fff; }
+  .mil small { display: block; font-size: .76rem; color: var(--dim); margin-top: 1px; }
+  .mil .go { margin-left: auto; color: var(--faint); font-size: 1.3rem; }
+
+  .tabs { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--asphalt); border-bottom: 1px solid var(--line); margin-top: 6px; }
+  .tab { background: none; border: none; color: var(--dim); font: 600 .92rem var(--txt); padding: 13px 0 11px; position: relative; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 6px; }
+  .tab[aria-selected="true"] { color: #fff; }
+  .tab[aria-selected="true"]::after { content: ""; position: absolute; left: 16%; right: 16%; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--cyan); }
+  .tab .count { font-family: var(--num); font-size: .82rem; font-weight: 700; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: var(--red); color: #fff; display: none; align-items: center; justify-content: center; }
+  .tab .count.show { display: inline-flex; }
+  .tab:focus-visible, button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+  .pane { display: none; padding: 14px 12px 0; }
+  .pane.active { display: block; }
+
+  /* Live */
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (min-width: 520px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
+  .tile { background: var(--panel); border-radius: 10px; padding: 11px 13px 12px; border: 1px solid transparent; }
+  .tile.alarm { border-color: var(--red); background: rgba(255,59,48,.07); }
+  .tile .l { font-size: .78rem; color: var(--dim); display: flex; justify-content: space-between; }
+  .tile .v { font-family: var(--num); font-size: 2.3rem; font-weight: 700; line-height: 1.1; margin-top: 2px; color: #fff; }
+  .tile .s { font-size: .72rem; color: var(--faint); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meter { height: 3px; background: #232a33; border-radius: 2px; margin-top: 7px; overflow: hidden; }
+  .meter > div { height: 100%; width: 0; background: var(--cyan); border-radius: 2px; transition: width .2s ease-out; }
+  .c-cyan { color: var(--cyan) !important; } .c-green { color: var(--green) !important; } .c-amber { color: var(--amber) !important; }
+  .c-red { color: var(--red) !important; } .c-blue { color: var(--blue) !important; }
+
+  .group-title { font-size: .84rem; font-weight: 600; color: var(--dim); margin: 20px 4px 8px; }
+  .panel { background: var(--panel); border-radius: 12px; padding: 4px 14px; }
+  .panel.pad { padding: 14px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
+  .row:last-child { border-bottom: none; }
+  .row .k { color: var(--dim); }
+  .row .n { font-family: var(--num); font-size: 1.1rem; font-weight: 700; color: #fff; }
+
+  /* Graphen */
+  .graph-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 0 2px 12px; }
+  .seg { display: inline-grid; grid-auto-flow: column; background: var(--panel); border-radius: 9px; padding: 3px; gap: 2px; }
+  .seg button { background: none; border: none; color: var(--dim); font: 600 .82rem var(--txt); padding: 6px 12px; border-radius: 7px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--panel-hi); color: #fff; }
+  .graph-meta { font-size: .76rem; color: var(--faint); text-align: right; }
+  .chart { background: var(--panel); border-radius: 12px; padding: 12px 12px 8px; margin-bottom: 10px; }
+  .chart-title { display: flex; justify-content: space-between; align-items: baseline; }
+  .chart-title h3 { font-size: .95rem; font-weight: 600; color: #fff; }
+  .chart-title span { font-size: .72rem; color: var(--faint); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 7px 0 4px; font-size: .78rem; color: var(--dim); }
+  .legend i { display: inline-block; width: 9px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .legend b { font-family: var(--num); font-size: 1.05rem; color: #fff; margin-left: 4px; font-weight: 700; }
+  .chart canvas { display: block; width: 100%; height: 150px; touch-action: pan-y; }
+  .graph-empty { text-align: center; color: var(--dim); font-size: .86rem; padding: 40px 20px; display: none; }
+
+  /* Tuner-Aufzeichnung */
+  .rec-status { display: flex; align-items: center; gap: 9px; font-size: .88rem; margin-bottom: 12px; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); flex: none; }
+  .rec-dot.on { background: var(--red); box-shadow: 0 0 8px var(--red); animation: glimm 1.2s ease-in-out infinite; }
+  #recMeta { margin-left: auto; font-family: var(--num); font-size: 1.05rem; font-weight: 700; color: #fff; }
+  .rec-opts { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; }
+  .btn.small { padding: 8px 12px; font-size: .8rem; }
+  .btn.rec-on { background: rgba(255,59,48,.15); border-color: rgba(255,59,48,.5); color: #ff6b61; }
+
+  /* Fehler */
+  .status-line { display: flex; justify-content: space-between; align-items: center; font-size: .8rem; color: var(--dim); padding: 0 4px 12px; }
+  .status-line .conn { display: flex; align-items: center; gap: 6px; }
+  .status-line .conn i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .status-line.offline .conn { color: var(--amber); }
+  .status-line.offline .conn i { background: var(--amber); }
+  .status-line .reading { color: var(--cyan); }
+  .offline-note { display: none; background: rgba(255,176,32,.08); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; padding: 10px 12px; margin-bottom: 12px; font-size: .84rem; line-height: 1.35; }
+  .offline-note b { display: block; color: var(--amber); margin-bottom: 2px; }
+
+  .faults { background: var(--panel); border-radius: 12px; overflow: hidden; }
+  .fault { border-bottom: 1px solid var(--line); }
+  .fault:last-child { border-bottom: none; }
+  .fault-head { width: 100%; display: grid; grid-template-columns: 5px 1fr auto; align-items: stretch; background: none; border: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .fault-head .bar { background: var(--red); }
+  .fault.sporadic .bar { background: var(--amber); }
+  .fault-head .main { padding: 12px 12px 12px 14px; }
+  .fault-head .code { display: block; font-family: var(--num); font-size: 1.55rem; font-weight: 700; color: #fff; letter-spacing: .01em; line-height: 1; }
+  .fault-head .text { display: block; font-size: .93rem; font-weight: 600; margin-top: 5px; line-height: 1.25; }
+  .fault-head .side { padding: 14px 14px 0 0; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  .pill { font-size: .72rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; color: var(--red); background: rgba(255,59,48,.12); }
+  .fault.sporadic .pill { color: var(--amber); background: rgba(255,176,32,.12); }
+  .chev { width: 9px; height: 9px; border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint); transform: rotate(45deg); transition: transform .18s; margin-right: 3px; }
+  .fault.open .chev { transform: rotate(-135deg); }
+  .fault-body { display: none; padding: 0 14px 14px 19px; }
+  .fault.open .fault-body { display: block; }
+  .fault-body dt { font-size: .74rem; color: var(--dim); margin-top: 10px; }
+  .fault-body dd { font-size: .88rem; line-height: 1.4; margin-top: 2px; }
+  .fault-body dd.raw { font-family: var(--num); color: var(--faint); font-size: .95rem; }
+
+  .empty { text-align: center; padding: 34px 20px; display: none; }
+  .empty .ok { font-family: var(--num); font-size: 1.5rem; font-weight: 700; color: var(--green); }
+  .empty p { color: var(--dim); font-size: .86rem; margin-top: 6px; line-height: 1.4; }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .panel .actions, .graph-actions { margin-top: 0; }
+  .graph-actions { margin-top: 4px; }
+  .btn { background: var(--panel-hi); border: 1px solid var(--line); color: #fff; font: 600 .9rem var(--txt); padding: 13px 12px; border-radius: 10px; cursor: pointer; }
+  .btn:active { background: #28313c; }
+  .btn.primary { background: var(--cyan); border-color: var(--cyan); color: #04202e; }
+  .btn.primary:active { background: #7fd6ff; }
+  .btn[disabled] { opacity: .4; pointer-events: none; }
+  .danger-zone { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .danger-zone p { font-size: .78rem; color: var(--dim); line-height: 1.4; margin-bottom: 10px; }
+  .btn.danger { width: 100%; background: transparent; border-color: rgba(255,59,48,.5); color: #ff6b61; }
+  .actions .btn.danger { width: auto; }
+  .btn.danger:active { background: rgba(255,59,48,.14); }
+  .hint { margin-top: 12px; font-size: .74rem; color: var(--faint); text-align: center; line-height: 1.4; }
+
+  .toast { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); background: var(--cluster); color: var(--asphalt); font-weight: 600; font-size: .86rem; padding: 10px 16px; border-radius: 999px; opacity: 0; pointer-events: none; transition: all .2s; z-index: 30; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; z-index: 20; align-items: flex-end; justify-content: center; }
+  .sheet-bg.show { display: flex; }
+  .sheet { background: var(--panel-hi); width: 100%; max-width: 560px; border-radius: 16px 16px 0 0; padding: 20px 16px calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .sheet h2 { font-family: var(--num); font-size: 1.35rem; color: #fff; }
+  .sheet p { font-size: .86rem; color: var(--dim); margin-top: 6px; line-height: 1.4; }
+  .sheet ul { list-style: none; margin: 12px 0 16px; border-top: 1px solid var(--line); }
+  .sheet li { display: flex; gap: 12px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: .86rem; }
+  .sheet li b { font-family: var(--num); font-size: 1.1rem; color: #fff; min-width: 56px; }
+  .sheet .actions { margin-top: 0; }
+
+  @media (prefers-reduced-motion: reduce) { .mil.sporadic .lamp, .rec-dot.on { animation: none; } .chev, .meter > div { transition: none; } }
+</style>
+</head>
+<body>
+<style>
+  .demo-bar { max-width: 560px; margin: 0 auto; padding: 10px 14px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font: .72rem -apple-system, Helvetica, Arial, sans-serif; color: #56626f; background: #07080a; }
+  .demo-bar span { margin-right: 4px; }
+  .demo-bar button { font: inherit; background: transparent; color: #8393a5; border: 1px solid #2a313b; border-radius: 999px; padding: 4px 10px; cursor: pointer; }
+  .demo-bar button[aria-pressed="true"] { color: #0e1013; background: #d8e6f5; border-color: #d8e6f5; }
+</style>
+<div class="demo-bar" aria-label="Nur Vorschau">
+  <span>Vorschau, simulierte Daten:</span>
+  <button type="button" data-state="faults" aria-pressed="true">2 Fehler</button>
+  <button type="button" data-state="clean" aria-pressed="false">Keine Fehler</button>
+  <button type="button" data-state="offline" aria-pressed="false">K-Line offline</button>
+</div>
+
+<div class="app">
+  <div class="header">
+    <div>
+      <h1>VW 1.8T Telemetrie</h1>
+      <div class="sub">Bosch Motronic M3.8.3</div>
+    </div>
+    <div class="badge" id="badge"><i></i><span id="badgeText">LIVE</span></div>
+  </div>
+
+  <div id="alertBanner" class="alert-banner">ACHTUNG: MOTOR-ALARM AKTIV!</div>
+
+  <button class="mil" id="mil" type="button" aria-label="Zum Fehlerspeicher">
+    <svg class="lamp" viewBox="0 0 32 32" aria-hidden="true">
+      <path class="lamp-body" d="M3 12h3v-2h3V8h4V6h6v2h2v2h3v-2h3v10h-3v-2h-3v3l-3 3h-9l-3-3v-2H6v-2H3z"/>
+    </svg>
+    <span><strong id="milTitle">0 Fehler im Speicher</strong><small id="milSub"></small></span>
+    <span class="go" aria-hidden="true">&rsaquo;</span>
+  </button>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="live">Live</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="graphen">Graphen</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="fehler">Fehler <span class="count" id="tabCount">0</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="display">Display</button>
+  </div>
+
+  <!-- LIVE -->
+  <section class="pane active" id="pane-live" role="tabpanel">
+    <div class="tiles">
+      <div class="tile" id="cardBoost"><div class="l"><span>Ladedruck</span><span>bar</span></div><div class="v c-cyan" id="valBoost">--</div><div class="s" id="subBoost">Peak: -- bar</div><div class="meter"><div id="barBoost"></div></div></div>
+      <div class="tile" id="cardOilP"><div class="l"><span>Öldruck</span><span>bar</span></div><div class="v c-green" id="valOilP">--</div><div class="s" id="subOilP">Min: -- bar</div><div class="meter"><div id="barOilP"></div></div></div>
+      <div class="tile" id="cardOilT"><div class="l"><span>Öltemp</span><span>°C</span></div><div class="v" id="valOilT">--</div><div class="s" id="subOilT">Max: -- °C</div><div class="meter"><div id="barOilT"></div></div></div>
+      <div class="tile" id="cardCoolant"><div class="l"><span>Kühlwasser</span><span>°C</span></div><div class="v c-cyan" id="valCoolant">--</div><div class="s">Soll: 90 °C</div><div class="meter"><div id="barCoolant"></div></div></div>
+      <div class="tile" id="cardIat"><div class="l"><span>Ladeluft (LLK)</span><span>°C</span></div><div class="v c-green" id="valIat">--</div><div class="s" id="subIat">ECU Ansaug: -- °C</div><div class="meter"><div id="barIat"></div></div></div>
+      <div class="tile" id="cardEgt"><div class="l"><span>Abgas (EGT)</span><span>°C</span></div><div class="v c-amber" id="valEgt">--</div><div class="s" id="subEgt">Max: -- °C</div><div class="meter"><div id="barEgt"></div></div></div>
+    </div>
+
+    <div class="group-title">ECU Live und Gemisch</div>
+    <div class="panel">
+      <div class="row"><span class="k">Lambda (&lambda;)</span><span class="n" id="valLambda">--</span></div>
+      <div class="row"><span class="k">Einspritzdauer</span><span class="n" id="valInjection">-- ms</span></div>
+      <div class="row"><span class="k">Zündwinkel</span><span class="n" id="valIgnition">-- °KW</span></div>
+      <div class="row"><span class="k">Klopfregelung (Rücknahme)</span><span class="n" id="valKnock">-- °</span></div>
+      <div class="row"><span class="k">Drosselklappe</span><span class="n" id="valThrottle">-- %</span></div>
+      <div class="row"><span class="k">Luftmasse (MAF)</span><span class="n" id="valMaf">-- g/s</span></div>
+      <div class="row"><span class="k">Bordspannung</span><span class="n" id="valVolt">-- V</span></div>
+    </div>
+  </section>
+
+  <!-- GRAPHEN -->
+  <section class="pane" id="pane-graphen" role="tabpanel">
+    <div class="graph-bar">
+      <div class="seg" id="rangeSeg" role="group" aria-label="Zeitraum">
+        <button type="button" data-range="60" aria-pressed="false">1 min</button>
+        <button type="button" data-range="300" aria-pressed="true">5 min</button>
+        <button type="button" data-range="900" aria-pressed="false">15 min</button>
+      </div>
+      <div class="graph-meta" id="graphMeta">0 Messpunkte</div>
+    </div>
+
+    <div class="graph-empty" id="graphEmpty">Verlauf wird gesammelt …<br>Die Kurven erscheinen nach wenigen Sekunden.</div>
+    <div id="charts"></div>
+
+    <div class="actions graph-actions">
+      <button class="btn primary" id="btnCsv" type="button">CSV exportieren</button>
+      <button class="btn" id="btnGraphClear" type="button">Verlauf leeren</button>
+    </div>
+    <p class="hint">Der Verlauf wird in diesem Browser gesammelt, solange die Seite geöffnet ist. Die komplette Fahrt liegt als CSV auf der SD-Karte. Wischen über ein Diagramm zeigt die Werte zum Zeitpunkt.</p>
+
+    <div class="group-title">Aufzeichnung für den Chiptuner</div>
+    <div class="panel pad">
+      <div class="rec-status"><span class="rec-dot" id="recDot"></span><span id="recText">Bereit</span><span id="recMeta">0 Zeilen</span></div>
+      <div class="actions" style="margin-top:0">
+        <button class="btn primary" id="btnRec" type="button">Aufzeichnung starten</button>
+        <button class="btn" id="btnTuneCsv" type="button" disabled>Tuner-CSV exportieren</button>
+      </div>
+      <div class="rec-opts">
+        <div class="seg" id="fmtSeg" role="group" aria-label="CSV-Format">
+          <button type="button" data-fmt="std" aria-pressed="true">Standard</button>
+          <button type="button" data-fmt="de" aria-pressed="false">Excel DE</button>
+        </div>
+        <button class="btn small" id="btnRecClear" type="button" disabled>Leeren</button>
+      </div>
+      <p class="hint">Standard: Komma als Trennzeichen und Punkt als Dezimalzeichen, für Tuning-Software, Python und Logviewer. Excel DE: Semikolon und Dezimalkomma. Pro Abfrage (ca. 4 Zeilen pro Sekunde) wird eine Zeile gespeichert. Die ECU-Werte kommen langsamer per K-Line: Die Spalte ECU_Packets steigt nur bei neuen ECU-Daten. Fällt die K-Line aus, bleiben die ECU-Spalten leer.</p>
+    </div>
+  </section>
+
+  <!-- FEHLER -->
+  <section class="pane" id="pane-fehler" role="tabpanel">
+    <div class="status-line" id="statusLine">
+      <span class="conn"><i></i><span id="connText">K-Line verbunden</span></span>
+      <span id="readAge">Noch nicht gelesen</span>
+    </div>
+    <div class="offline-note" id="offlineNote">
+      <b>Keine Verbindung zum Steuergerät</b>
+      Der Fehlerspeicher kann gerade nicht gelesen werden. Die Liste zeigt den letzten bekannten Stand, nicht den aktuellen.
+    </div>
+
+    <div class="faults" id="faults" style="display:none"></div>
+    <div class="empty" id="empty">
+      <div class="ok">Keine Fehler gespeichert</div>
+      <p>Das Steuergerät hat aktuell keinen Eintrag im Fehlerspeicher.</p>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="btnRead" type="button">Neu auslesen</button>
+      <button class="btn" id="btnCopy" type="button">Als Text kopieren</button>
+    </div>
+
+    <div class="danger-zone">
+      <p>Löschen setzt den Fehlerspeicher im Steuergerät zurück. Notiere dir die Fehler vorher, sie lassen sich danach nicht mehr auslesen.</p>
+      <button class="btn danger" id="btnClear" type="button">Fehlerspeicher löschen</button>
+    </div>
+  </section>
+
+  <!-- DISPLAY -->
+  <section class="pane" id="pane-display" role="tabpanel">
+    <div class="panel pad">
+      <div class="actions">
+        <button class="btn" id="btnTheme" type="button">Nächstes Theme</button>
+        <button class="btn" id="btnPeaks" type="button">Peak-Werte zurücksetzen</button>
+      </div>
+      <p class="hint" id="logInfo">SD-Karte: -- | Zeilen: --</p>
+    </div>
+  </section>
+</div>
+
+<div class="sheet-bg" id="sheetBg">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <h2 id="sheetTitle">Fehlerspeicher löschen?</h2>
+    <p>Diese Einträge werden im Steuergerät gelöscht:</p>
+    <ul id="sheetList"></ul>
+    <div class="actions">
+      <button class="btn" id="sheetCancel" type="button">Abbrechen</button>
+      <button class="btn danger" id="sheetOk" type="button">Löschen</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<!-- VORSCHAU-SHIM: ersetzt den ESP32 durch simulierte Messwerte. Gehoert NICHT in die Firmware. -->
+<script>
+(function () {
+  var mode = 'faults';            // faults | clean | offline
+  var lastRead = Date.now() - 12000;
+  var pk = { boost: -1, oilTMax: 0, egt: 0, oilPMin: 99 };
+  var T0 = Date.now(), frozenPk = 0;   // Gerätezeit und ECU-Paketzaehler (neues Paket ca. alle 350 ms)
+
+  function sim(ts) {
+    var s = ts / 1000;
+    var pull = Math.pow(Math.max(0, Math.sin(s / 11)), 2);       // wiederkehrende Beschleunigung
+    var d = {};
+    d.boost = -0.45 + 1.85 * pull;
+    d.oilP = 2.0 + 2.6 * pull + 0.25 * Math.sin(s / 7);
+    d.oilT = 96 + 10 * Math.sin(s / 90) + 4 * Math.sin(s / 13);
+    d.coolant = 90 + 3 * Math.sin(s / 70);
+    d.iat = 34 + 9 * pull + 2 * Math.sin(s / 37);
+    d.ecuIat = 31 + 2 * Math.sin(s / 41);
+    d.egt = 560 + 340 * pull + 15 * Math.sin(s / 5);
+    d.batt = 14.1 + 0.25 * Math.sin(s / 17) - 0.5 * pull;
+    d.lambda = 1.0 - 0.12 * pull + 0.02 * Math.sin(s / 3);
+    d.injMs = 3.2 + 4.5 * pull;
+    d.ignDeg = 12 + 8 * (1 - pull) + 2 * Math.sin(s / 4);
+    d.knock = -1.5 * pull * Math.max(0, Math.sin(s / 2));
+    d.throttle = 8 + 85 * pull;
+    d.maf = 6 + 140 * pull;
+    d.rpm = Math.round(900 + 5300 * pull);
+    d.load = 18 + 78 * pull;
+    return d;
+  }
+
+  function faultsFor() {
+    if (mode === 'clean') return [];
+    return [
+      { code: 'P1092', vag: 17476, status: 'sporadisch', text: 'Ladedruckregelung: Unterschreitung', cause: 'Ladeluft-Leck, N75-Ventil, Schläuche, Druckdose, Turbolader', known: true },
+      { code: 'P0565', vag: 16949, status: 'statisch', text: 'Geschwindigkeitssignal: Fehler', cause: 'Tachogeber G22, Kabel, Kombiinstrument', known: true }
+    ];
+  }
+
+  function payload() {
+    var now = Date.now();
+    var d = sim(now);
+    pk.boost = Math.max(pk.boost, d.boost); pk.oilTMax = Math.max(pk.oilTMax, d.oilT);
+    pk.egt = Math.max(pk.egt, d.egt); pk.oilPMin = Math.min(pk.oilPMin, d.oilP);
+    var f = faultsFor();
+    return {
+      boost: d.boost, boostPeak: pk.boost, oilP: d.oilP, oilPMin: pk.oilPMin, oilT: d.oilT, oilTPeak: pk.oilTMax,
+      coolant: d.coolant, iat: d.iat, ecuIat: d.ecuIat, egt: d.egt, egtPeak: pk.egt, batt: d.batt,
+      lambda: d.lambda, injMs: d.injMs, ignDeg: d.ignDeg, knock: d.knock, throttle: d.throttle, maf: d.maf,
+      kline: mode !== 'offline', dtcCount: f.length,
+      alarmBoost: d.boost > 1.45, alarmOilP: d.oilP < 1.2, alarmOilT: d.oilT > 120, alarmCool: d.coolant > 103,
+      alarmIat: d.iat > 55, alarmEgt: d.egt > 950, alarmBatt: d.batt < 12 || d.batt > 15,
+      sdReady: true, logLines: 1842 + Math.floor((now % 1e7) / 1000), sim: false,
+      dtcAgeMs: now - lastRead, dtcReading: false, dtcs: f,
+      rpm: d.rpm, load: d.load, status: d.boost > 0 ? 3 : 1, ms: now - T0 + 123456,
+      pk: mode === 'offline' ? (frozenPk = frozenPk || Math.floor((now - T0) / 350)) : (frozenPk = 0, Math.floor((now - T0) / 350))
+    };
+  }
+
+  function setBtns() {
+    var bs = document.querySelectorAll('.demo-bar button');
+    for (var i = 0; i < bs.length; i++) bs[i].setAttribute('aria-pressed', String(bs[i].getAttribute('data-state') === mode));
+  }
+
+  window.fetch = function (url, opt) {
+    var post = opt && opt.method === 'POST';
+    if (post && url === '/api/dtc/clear') { mode = 'clean'; lastRead = Date.now(); setBtns(); }
+    if (post && url === '/api/dtc/read') { lastRead = Date.now(); }
+    var body = (url === '/api/data') ? payload() : { status: 'ok' };
+    return Promise.resolve({ json: function () { return Promise.resolve(body); } });
+  };
+
+  window.addEventListener('load', function () {
+    // 10 Minuten Verlauf vorbelegen, damit die Diagramme sofort gefuellt sind
+    var list = [], now = Date.now();
+    for (var i = 600; i >= 1; i--) {
+      var t = now - i * 1000, d = sim(t);
+      d.t = t; list.push(d);
+    }
+    if (typeof seedHistory === 'function') seedHistory(list);
+    var bs = document.querySelectorAll('.demo-bar button');
+    for (var j = 0; j < bs.length; j++) bs[j].addEventListener('click', function (e) {
+      mode = e.currentTarget.getAttribute('data-state'); setBtns();
+    });
+    setBtns();
+  });
+})();
+</script>
+<script>
+  const $ = id => document.getElementById(id);
+  const $$ = s => Array.prototype.slice.call(document.querySelectorAll(s));
+  const clamp = v => Math.min(Math.max(v, 0), 100);
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  let failCount = 0;
+  let faults = [];          // aktuelle DTC-Liste
+  let faultSig = '';        // Signatur zur Erkennung von Aenderungen
+  let openCodes = {};       // aufgeklappte Fehler (nach VAG-Code)
+  let readingUntil = 0;     // lokale Rueckmeldung nach Klick auf "Neu auslesen"
+  let activeTab = 'live';
+
+  function setTab(name) {
+    activeTab = name;
+    $$('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+    $$('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+    window.scrollTo(0, 0);
+    if (name === 'graphen') renderCharts();
+  }
+  $$('.tab').forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
+  $('mil').addEventListener('click', () => setTab('fehler'));
+
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+  function post(url) { return fetch(url, { method: 'POST' }); }
+  function setBar(id, pct) { $(id).style.width = clamp(pct) + '%'; }
+  function setAlarm(id, on) { $(id).className = on ? 'tile alarm' : 'tile'; }
+
+  /* ===================== GRAPHEN ===================== */
+  const HIST_MAX = 1800;          // 30 min bei 1 Hz
+  const history = [];             // {t, oilT, coolant, iat, egt, boost, oilP, batt}
+  let rangeSec = 300;
+  const hover = {};               // pro Diagramm: Zeitpunkt unter dem Finger
+
+  const CHARTS = [
+    { id: 'chT', title: 'Temperaturen', unit: '°C', dec: 0, lo: 20, hi: 120, series: [
+        { k: 'oilT', n: 'Öl', c: '#ffb020' }, { k: 'coolant', n: 'Kühlwasser', c: '#5cc8ff' }, { k: 'iat', n: 'Ladeluft', c: '#4fd18b' } ],
+      th: [{ v: 103, c: 'rgba(92,200,255,.55)' }, { v: 120, c: 'rgba(255,176,32,.55)' }] },
+    { id: 'chE', title: 'Abgas (EGT)', unit: '°C', dec: 0, lo: 300, hi: 900, series: [
+        { k: 'egt', n: 'EGT', c: '#ff7a45' } ],
+      th: [{ v: 900, c: 'rgba(255,176,32,.55)' }, { v: 950, c: 'rgba(255,59,48,.65)' }] },
+    { id: 'chP', title: 'Drücke', unit: 'bar', dec: 2, lo: -0.5, hi: 2, series: [
+        { k: 'boost', n: 'Ladedruck', c: '#5cc8ff' }, { k: 'oilP', n: 'Öldruck', c: '#4fd18b' } ],
+      th: [{ v: 1.45, c: 'rgba(255,59,48,.55)' }] },
+    { id: 'chV', title: 'Bordspannung', unit: 'V', dec: 1, lo: 11, hi: 15.5, series: [
+        { k: 'batt', n: 'Spannung', c: '#d8e6f5' } ],
+      th: [{ v: 12, c: 'rgba(255,176,32,.55)' }, { v: 15, c: 'rgba(255,59,48,.55)' }] }
+  ];
+
+  // Diagramm-Gerueste einmalig aufbauen
+  $('charts').innerHTML = CHARTS.map(ch =>
+    '<div class="chart"><div class="chart-title"><h3>' + ch.title + '</h3><span>' + ch.unit + '</span></div>'
+    + '<div class="legend" id="lg-' + ch.id + '">'
+    + ch.series.map(s => '<span><i style="background:' + s.c + '"></i>' + s.n + '<b data-k="' + s.k + '">--</b></span>').join('')
+    + '</div><canvas id="' + ch.id + '"></canvas></div>').join('');
+
+  function toSample(t, d) {
+    return { t: t, oilT: d.oilT, coolant: d.coolant, iat: d.iat, egt: d.egt, boost: d.boost, oilP: d.oilP, batt: d.batt };
+  }
+  function pushSample(t, d) {
+    if (history.length && t - history[history.length - 1].t < 900) return;
+    history.push(toSample(t, d));
+    if (history.length > HIST_MAX) history.shift();
+  }
+  // Fuer die Vorschau: aelteren Verlauf vorne einfuegen (die erste Live-Abfrage kann schon vorher laufen)
+  function seedHistory(list) {
+    const first = history.length ? history[0].t : Infinity;
+    const older = list.filter(d => d.t < first - 900).map(d => toSample(d.t, d));
+    history.unshift.apply(history, older);
+    if (history.length > HIST_MAX) history.splice(0, history.length - HIST_MAX);
+  }
+
+  function niceStep(raw) {
+    const p = Math.pow(10, Math.floor(Math.log10(raw)));
+    const f = raw / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+  }
+
+  function windowed() {
+    if (!history.length) return { pts: [], t0: 0, t1: 0 };
+    const t1 = history[history.length - 1].t;
+    const t0 = t1 - rangeSec * 1000;
+    return { pts: history.filter(p => p.t >= t0), t0: t0, t1: t1 };
+  }
+
+  function drawChart(ch, win) {
+    const c = $(ch.id);
+    const w = c.clientWidth, h = c.clientHeight;
+    if (!w) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const g = c.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+
+    const padL = 36, padR = 6, padT = 6, padB = 18;
+    const pw = w - padL - padR, ph = h - padT - padB;
+    const span = rangeSec * 1000;
+
+    // Y-Bereich: Standardbereich, erweitert um Daten und Grenzwerte
+    let lo = ch.lo, hi = ch.hi;
+    win.pts.forEach(p => ch.series.forEach(s => { const v = p[s.k]; if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; } }));
+    const step = niceStep((hi - lo) / 5);
+    lo = Math.floor(lo / step) * step;
+    hi = Math.ceil(hi / step) * step;
+    const X = t => padL + ((t - win.t0) / span) * pw;
+    const Y = v => padT + (1 - (v - lo) / (hi - lo)) * ph;
+
+    // Raster + Achsenbeschriftung
+    g.font = '10px -apple-system, Helvetica, Arial, sans-serif';
+    g.textBaseline = 'middle'; g.textAlign = 'right';
+    g.lineWidth = 1;
+    for (let v = lo; v <= hi + step / 2; v += step) {
+      const y = Math.round(Y(v)) + .5;
+      g.strokeStyle = '#232a33'; g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+      g.fillStyle = '#56626f'; g.fillText(v.toFixed(step < 1 ? (step < .5 ? 2 : 1) : 0), padL - 5, y);
+    }
+    g.textBaseline = 'alphabetic';
+    g.textAlign = 'left'; g.fillStyle = '#56626f';
+    g.fillText(rangeSec >= 120 ? '-' + Math.round(rangeSec / 60) + ' min' : '-' + rangeSec + ' s', padL, h - 4);
+    g.textAlign = 'right'; g.fillText('jetzt', w - padR, h - 4);
+
+    // Grenzwerte
+    g.setLineDash([4, 4]); g.lineWidth = 1;
+    (ch.th || []).forEach(t => {
+      if (t.v < lo || t.v > hi) return;
+      const y = Math.round(Y(t.v)) + .5;
+      g.strokeStyle = t.c; g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+    });
+    g.setLineDash([]);
+
+    // Kurven (Luecken bei null-Werten, z.B. K-Line offline)
+    g.lineWidth = 1.8; g.lineJoin = 'round'; g.lineCap = 'round';
+    ch.series.forEach(s => {
+      g.strokeStyle = s.c; g.beginPath();
+      let pen = false;
+      win.pts.forEach(p => {
+        const v = p[s.k];
+        if (v == null) { pen = false; return; }
+        const x = X(p.t), y = Y(v);
+        if (!pen) { g.moveTo(x, y); pen = true; } else g.lineTo(x, y);
+      });
+      g.stroke();
+    });
+
+    // Fadenkreuz unter dem Finger
+    const lg = $('lg-' + ch.id);
+    let sel = null;
+    if (hover[ch.id] != null && win.pts.length) {
+      let best = win.pts[0], bd = Infinity;
+      win.pts.forEach(p => { const d = Math.abs(p.t - hover[ch.id]); if (d < bd) { bd = d; best = p; } });
+      sel = best;
+      const x = Math.round(X(best.t)) + .5;
+      g.strokeStyle = 'rgba(216,230,245,.45)'; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x, padT); g.lineTo(x, padT + ph); g.stroke();
+      ch.series.forEach(s => {
+        if (best[s.k] == null) return;
+        g.fillStyle = s.c; g.beginPath(); g.arc(X(best.t), Y(best[s.k]), 3.5, 0, 6.2832); g.fill();
+      });
+    }
+    // Legende: Wert unter dem Finger oder aktueller Wert
+    const ref = sel || (win.pts.length ? win.pts[win.pts.length - 1] : null);
+    ch.series.forEach(s => {
+      const el = lg.querySelector('b[data-k="' + s.k + '"]');
+      el.textContent = (ref && ref[s.k] != null) ? ref[s.k].toFixed(ch.dec) : '--';
+    });
+  }
+
+  function renderCharts() {
+    if (activeTab !== 'graphen') return;
+    const win = windowed();
+    $('graphEmpty').style.display = history.length < 2 ? 'block' : 'none';
+    $('charts').style.display = history.length < 2 ? 'none' : 'block';
+    $('graphMeta').textContent = history.length + ' Messpunkte';
+    if (history.length >= 2) CHARTS.forEach(ch => drawChart(ch, win));
+  }
+
+  // Wischen / Antippen: Werte zum Zeitpunkt anzeigen
+  CHARTS.forEach(ch => {
+    const c = $(ch.id);
+    const move = e => {
+      const r = c.getBoundingClientRect();
+      const win = windowed();
+      const frac = Math.min(Math.max((e.clientX - r.left - 36) / (r.width - 42), 0), 1);
+      hover[ch.id] = win.t0 + frac * rangeSec * 1000;
+      renderCharts();
+    };
+    const end = () => { hover[ch.id] = null; renderCharts(); };
+    c.addEventListener('pointerdown', move);
+    c.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') move(e); });
+    c.addEventListener('pointerup', end);
+    c.addEventListener('pointerleave', end);
+    c.addEventListener('pointercancel', end);
+  });
+
+  $$('#rangeSeg button').forEach(b => b.addEventListener('click', () => {
+    rangeSec = Number(b.dataset.range);
+    $$('#rangeSeg button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    renderCharts();
+  }));
+  window.addEventListener('resize', renderCharts);
+
+  $('btnGraphClear').addEventListener('click', () => { history.length = 0; renderCharts(); toast('Verlauf geleert'); });
+
+  function two(n) { return (n < 10 ? '0' : '') + n; }
+  function stamp(t, sep) { const d = new Date(t); return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) + sep + two(d.getHours()) + ':' + two(d.getMinutes()) + ':' + two(d.getSeconds()); }
+  function num(v, dec) { return v == null ? '' : v.toFixed(dec).replace('.', ','); }
+
+  $('btnCsv').addEventListener('click', () => {
+    if (!history.length) { toast('Noch keine Daten'); return; }
+    // Semikolon + Dezimalkomma: oeffnet sich direkt in deutschem Excel
+    let csv = '\ufeffZeit;Öltemp_C;Kühlwasser_C;Ladeluft_C;EGT_C;Ladedruck_bar;Öldruck_bar;Bordspannung_V\r\n';
+    history.forEach(p => {
+      csv += stamp(p.t, ' ') + ';' + num(p.oilT, 1) + ';' + num(p.coolant, 1) + ';' + num(p.iat, 1) + ';' + num(p.egt, 0) + ';'
+           + num(p.boost, 2) + ';' + num(p.oilP, 2) + ';' + num(p.batt, 2) + '\r\n';
+    });
+    const name = 'agu_verlauf_' + stamp(history[0].t, '_').replace(/[-:]/g, '').slice(0, 13) + '.csv';
+    try {
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('CSV exportiert (' + history.length + ' Zeilen)');
+    } catch (e) { toast('Export nicht möglich'); }
+  });
+
+  /* ===================== TUNER-AUFZEICHNUNG ===================== */
+  const REC_MAX = 20000;                 // ca. 80 min bei 4 Zeilen/s
+  let recording = false, recRows = [], recFmt = 'std';
+
+  // Spalten: Name, Wert-Funktion, Nachkommastellen. ECU-Werte (k=true) bleiben bei K-Line-Ausfall leer.
+  const REC_COLS = [
+    ['Time_s',          r => r.tS,      3, false],
+    ['Device_ms',       r => r.ms,      0, false],
+    ['Timestamp',       null,           0, false],
+    ['RPM',             r => r.rpm,     0, true],
+    ['Load_pct',        r => r.load,    1, true],
+    ['MAF_gs',          r => r.maf,     1, true],
+    ['Boost_bar',       r => r.boost,   3, false],
+    ['Lambda',          r => r.lambda,  3, true],
+    ['Ignition_deg',    r => r.ign,     1, true],
+    ['KnockRetard_deg', r => r.knock,   2, true],
+    ['Throttle_pct',    r => r.thr,     1, true],
+    ['Injection_ms',    r => r.inj,     2, true],
+    ['IntakeAirECU_C',  r => r.iatE,    1, true],
+    ['ChargeAir_C',     r => r.iat,     1, false],
+    ['Coolant_C',       r => r.coolant, 1, true],
+    ['OilTemp_C',       r => r.oilT,    1, false],
+    ['OilPressure_bar', r => r.oilP,    2, false],
+    ['EGT_C',           r => r.egt,     0, false],
+    ['Battery_V',       r => r.batt,    2, true],
+    ['StatusBits',      r => r.status,  0, true],
+    ['ECU_Packets',     r => r.pk,      0, false],
+    ['DTC_Count',       r => r.dtc,     0, false],
+    ['AlarmMask',       r => r.alarm,   0, false]
+  ];
+
+  function recAdd(d) {
+    const ecu = d.sim || d.kline;
+    const wall = Date.now();
+    const ms = (d.ms != null) ? d.ms : null;
+    if (!recRows.length) { recAdd.ms0 = ms; recAdd.wall0 = wall; }
+    const tS = (ms != null && recAdd.ms0 != null) ? (ms - recAdd.ms0) / 1000 : (wall - recAdd.wall0) / 1000;
+    // Alarm-Bitmaske wie im SD-Log: 1 Boost, 2 Oeldruck, 4 Oeltemp, 8 Kuehlwasser, 16 Ladeluft, 32 EGT, 64 Spannung
+    const alarm = (d.alarmBoost ? 1 : 0) | (d.alarmOilP ? 2 : 0) | (d.alarmOilT ? 4 : 0) | (d.alarmCool ? 8 : 0)
+                | (d.alarmIat ? 16 : 0) | (d.alarmEgt ? 32 : 0) | (d.alarmBatt ? 64 : 0);
+    recRows.push({
+      tS: tS, ms: ms, wall: wall,
+      rpm: d.rpm, load: d.load, maf: d.maf, boost: d.boost, lambda: d.lambda, ign: d.ignDeg, knock: d.knock,
+      thr: d.throttle, inj: d.injMs, iatE: d.ecuIat, iat: d.iat, coolant: d.coolant, oilT: d.oilT, oilP: d.oilP,
+      egt: d.egt, batt: d.batt, status: d.status, pk: d.pk, dtc: d.dtcCount, alarm: alarm, ecu: ecu
+    });
+    if (recRows.length >= REC_MAX) { recStop(); toast('Aufzeichnung voll, gestoppt'); }
+    recUpdateUi();
+  }
+
+  function recDuration() {
+    if (!recRows.length) return '0:00';
+    const sec = Math.round(recRows[recRows.length - 1].tS);
+    return Math.floor(sec / 60) + ':' + two(sec % 60);
+  }
+  function recUpdateUi() {
+    $('recDot').className = 'rec-dot' + (recording ? ' on' : '');
+    $('recText').textContent = recording ? 'Aufzeichnung läuft' : (recRows.length ? 'Gestoppt' : 'Bereit');
+    $('recMeta').textContent = recRows.length + ' Zeilen · ' + recDuration() + ' min';
+    $('btnRec').textContent = recording ? 'Aufzeichnung stoppen' : 'Aufzeichnung starten';
+    $('btnRec').className = 'btn ' + (recording ? 'rec-on' : 'primary');
+    $('btnTuneCsv').disabled = !recRows.length;
+    $('btnRecClear').disabled = !recRows.length || recording;
+  }
+  function recStop() { recording = false; recUpdateUi(); }
+
+  $('btnRec').addEventListener('click', () => {
+    if (recording) { recStop(); toast('Aufzeichnung gestoppt'); return; }
+    if (recRows.length && !confirm('Vorhandene Aufzeichnung (' + recRows.length + ' Zeilen) verwerfen und neu starten?')) return;
+    recRows = []; recording = true; recUpdateUi(); toast('Aufzeichnung gestartet');
+  });
+  $('btnRecClear').addEventListener('click', () => {
+    if (!confirm('Aufzeichnung mit ' + recRows.length + ' Zeilen löschen?')) return;
+    recRows = []; recUpdateUi(); toast('Aufzeichnung gelöscht');
+  });
+  $$('#fmtSeg button').forEach(b => b.addEventListener('click', () => {
+    recFmt = b.dataset.fmt;
+    $$('#fmtSeg button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+
+  function recCsv(fmt) {
+    const sep = fmt === 'de' ? ';' : ',';
+    let csv = fmt === 'de' ? '\ufeff' : '';
+    csv += REC_COLS.map(c => c[0]).join(sep) + '\r\n';
+    recRows.forEach(r => {
+      csv += REC_COLS.map(c => {
+        if (c[1] === null) return stamp(r.wall, ' ') + '.' + ('00' + (r.wall % 1000)).slice(-3);
+        if (c[3] && !r.ecu) return '';                 // ECU-Wert ohne K-Line: leer statt veraltetem Wert
+        const v = c[1](r);
+        if (v == null || isNaN(v)) return '';
+        const t = Number(v).toFixed(c[2]);
+        return fmt === 'de' ? t.replace('.', ',') : t;
+      }).join(sep) + '\r\n';
+    });
+    return csv;
+  }
+  $('btnTuneCsv').addEventListener('click', () => {
+    if (!recRows.length) { toast('Noch keine Aufzeichnung'); return; }
+    const csv = recCsv(recFmt);
+    const name = 'agu_tuner_' + stamp(recRows[0].wall, '_').replace(/[-:]/g, '') + '.csv';
+    try {
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('Tuner-CSV exportiert (' + recRows.length + ' Zeilen)');
+    } catch (e) { toast('Export nicht möglich'); }
+  });
+
+  /* ===================== FEHLERSPEICHER ===================== */
+  function renderFaults(list) {
+    const sig = JSON.stringify(list);
+    if (sig === faultSig) return;       // nichts geaendert -> aufgeklappte Karten bleiben offen
+    faultSig = sig;
+    faults = list;
+    $('faults').innerHTML = list.map(d => {
+      const sporadic = d.status === 'sporadisch';
+      const open = openCodes[d.vag] ? ' open' : '';
+      return '<div class="fault' + (sporadic ? ' sporadic' : '') + open + '" data-vag="' + d.vag + '">'
+        + '<button class="fault-head" type="button" aria-expanded="' + (open ? 'true' : 'false') + '">'
+        + '<span class="bar"></span>'
+        + '<span class="main"><span class="code">' + esc(d.code) + '</span><span class="text">' + esc(d.text) + '</span></span>'
+        + '<span class="side"><span class="pill">' + esc(d.status) + '</span><span class="chev"></span></span>'
+        + '</button>'
+        + '<div class="fault-body"><dl>'
+        + '<dt>Mögliche Ursachen</dt><dd>' + esc(d.cause) + '</dd>'
+        + '<dt>VAG-Code</dt><dd class="raw">' + d.vag + (d.known ? '' : ' (nicht in Datenbank)') + '</dd>'
+        + '</dl></div></div>';
+    }).join('');
+    $$('.fault-head').forEach(h => h.addEventListener('click', () => {
+      const f = h.parentElement;
+      const isOpen = f.classList.toggle('open');
+      openCodes[f.dataset.vag] = isOpen;
+      h.setAttribute('aria-expanded', String(isOpen));
+    }));
+  }
+
+  function renderDtcState(data) {
+    const n = data.dtcCount;
+    const sim = data.sim;
+    const offline = !sim && !data.kline;
+    renderFaults(data.dtcs);
+
+    $('faults').style.display = n > 0 ? 'block' : 'none';
+    $('empty').style.display = n > 0 ? 'none' : 'block';
+    $('btnCopy').disabled = n === 0;
+    $('btnClear').disabled = n === 0 || offline;
+    $('btnRead').disabled = offline;
+
+    $('tabCount').textContent = n;
+    $('tabCount').classList.toggle('show', n > 0);
+
+    const sp = data.dtcs.filter(f => f.status === 'sporadisch').length;
+    const mil = $('mil');
+    mil.classList.toggle('show', n > 0);
+    mil.classList.toggle('static', n > sp);
+    mil.classList.toggle('sporadic', n > 0 && n === sp);
+    $('milTitle').textContent = n + ' Fehler im Speicher';
+    $('milSub').textContent = sp + ' sporadisch, ' + (n - sp) + ' statisch';
+
+    $('statusLine').classList.toggle('offline', offline);
+    $('connText').textContent = sim ? 'Simulation' : (offline ? 'K-Line offline' : 'K-Line verbunden');
+    $('offlineNote').style.display = offline ? 'block' : 'none';
+
+    const age = $('readAge');
+    const reading = data.dtcReading || Date.now() < readingUntil;
+    age.className = reading ? 'reading' : '';
+    if (reading) age.textContent = 'wird gelesen …';
+    else if (offline) age.textContent = 'Letzter Stand';
+    else if (data.dtcAgeMs < 0) age.textContent = 'Noch nicht gelesen';
+    else {
+      const s = Math.round(data.dtcAgeMs / 1000);
+      age.textContent = s < 90 ? 'Zuletzt gelesen vor ' + s + ' s' : 'Zuletzt gelesen vor ' + Math.round(s / 60) + ' min';
+    }
+  }
+
+  /* ===================== LIVE-DATEN ===================== */
+  function fetchTelemetry() {
+    fetch('/api/data')
+      .then(r => r.json())
+      .then(data => {
+        failCount = 0;
+        const b = $('badge');
+        if (data.sim) { b.className = 'badge warn'; $('badgeText').textContent = 'SIMULATION'; }
+        else if (data.kline) { b.className = 'badge'; $('badgeText').textContent = 'KW1281 OK'; }
+        else { b.className = 'badge warn'; $('badgeText').textContent = 'K-LINE OFFLINE'; }
+
+        // 1. Ladedruck
+        $('valBoost').innerText = data.boost.toFixed(2);
+        $('subBoost').innerText = 'Peak: ' + data.boostPeak.toFixed(2) + ' bar';
+        setBar('barBoost', ((data.boost + 1.0) / 3.0) * 100);
+        setAlarm('cardBoost', data.alarmBoost);
+        // 2. Oeldruck
+        $('valOilP').innerText = data.oilP.toFixed(1);
+        $('subOilP').innerText = 'Min: ' + data.oilPMin.toFixed(1) + ' bar';
+        setBar('barOilP', (data.oilP / 7.0) * 100);
+        setAlarm('cardOilP', data.alarmOilP);
+        // 3. Oeltemperatur
+        const ot = $('valOilT');
+        ot.innerText = Math.round(data.oilT);
+        $('subOilT').innerText = 'Max: ' + Math.round(data.oilTPeak) + ' °C';
+        setBar('barOilT', ((data.oilT - 40) / 100) * 100);
+        ot.className = 'v ' + (data.oilT < 75 ? 'c-blue' : (data.alarmOilT ? 'c-red' : 'c-green'));
+        setAlarm('cardOilT', data.alarmOilT);
+        // 4. Kuehlwasser
+        $('valCoolant').innerText = Math.round(data.coolant);
+        setBar('barCoolant', ((data.coolant - 40) / 80) * 100);
+        setAlarm('cardCoolant', data.alarmCool);
+        // 5. Ladeluft
+        $('valIat').innerText = data.iat.toFixed(1);
+        $('subIat').innerText = 'ECU Ansaug: ' + Math.round(data.ecuIat) + ' °C';
+        setBar('barIat', ((data.iat - 10) / 60) * 100);
+        setAlarm('cardIat', data.alarmIat);
+        // 6. EGT
+        $('valEgt').innerText = Math.round(data.egt);
+        $('subEgt').innerText = 'Max: ' + Math.round(data.egtPeak) + ' °C';
+        setBar('barEgt', ((data.egt - 300) / 750) * 100);
+        setAlarm('cardEgt', data.alarmEgt);
+
+        const anyAlarm = data.alarmBoost || data.alarmOilP || data.alarmOilT || data.alarmCool || data.alarmIat || data.alarmEgt || data.alarmBatt;
+        $('alertBanner').style.display = anyAlarm ? 'block' : 'none';
+
+        // ECU Live
+        const lam = $('valLambda');
+        lam.innerText = data.lambda.toFixed(3);
+        lam.className = 'n ' + ((data.lambda >= 0.95 && data.lambda <= 1.05) ? 'c-green' : (data.lambda < 0.90 ? 'c-amber' : 'c-red'));
+        $('valInjection').innerText = data.injMs.toFixed(2) + ' ms';
+        $('valIgnition').innerText = data.ignDeg.toFixed(1) + ' °KW';
+        $('valKnock').innerText = data.knock.toFixed(1) + ' °';
+        $('valThrottle').innerText = data.throttle.toFixed(1) + ' %';
+        $('valMaf').innerText = data.maf.toFixed(1) + ' g/s';
+        $('valVolt').innerText = data.batt.toFixed(1) + ' V';
+
+        renderDtcState(data);
+        $('logInfo').innerText = 'SD-Karte: ' + (data.sdReady ? 'Aktiv' : 'Keine Karte') + ' | ' + data.logLines + ' Zeilen geloggt';
+
+        // Verlauf: Kuehlwasser und Spannung kommen per K-Line -> bei Offline als Luecke (null) speichern
+        const klineOk = data.sim || data.kline;
+        pushSample(Date.now(), {
+          oilT: data.oilT, iat: data.iat, egt: data.egt, boost: data.boost, oilP: data.oilP,
+          coolant: klineOk ? data.coolant : null, batt: klineOk ? data.batt : null
+        });
+        if (recording) recAdd(data);
+        renderCharts();
+      })
+      .catch(() => {
+        failCount++;
+        if (failCount > 3) {
+          $('badge').className = 'badge off';
+          $('badgeText').innerText = 'OFFLINE';
+        }
+      });
+  }
+
+  /* ===================== AKTIONEN ===================== */
+  $('btnRead').addEventListener('click', () => {
+    readingUntil = Date.now() + 1500;
+    post('/api/dtc/read').then(() => { fetchTelemetry(); setTimeout(() => toast('Fehlerspeicher gelesen'), 1500); });
+  });
+
+  function copyText() {
+    const d = new Date().toLocaleString('de-DE');
+    return 'VW 1.8T AGU, Fehlerspeicher (' + d + ')\n' +
+      faults.map(f => f.code + ' - ' + f.text + ' (' + f.status + ')\n  Prüfen: ' + f.cause + ' [VAG ' + f.vag + ']').join('\n');
+  }
+  $('btnCopy').addEventListener('click', () => {
+    const txt = copyText();
+    const done = () => toast('Fehlerliste kopiert');
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { toast('Kopieren nicht möglich'); }
+      ta.remove();
+    };
+    // Im Access-Point (http, kein HTTPS) ist navigator.clipboard meist nicht verfuegbar -> Fallback
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(txt).then(done, fallback);
+    else fallback();
+  });
+
+  $('btnClear').addEventListener('click', () => {
+    $('sheetList').innerHTML = faults.map(f => '<li><b>' + esc(f.code) + '</b><span>' + esc(f.text) + '</span></li>').join('');
+    $('sheetBg').classList.add('show');
+    $('sheetCancel').focus();
+  });
+  const closeSheet = () => $('sheetBg').classList.remove('show');
+  $('sheetCancel').addEventListener('click', closeSheet);
+  $('sheetBg').addEventListener('click', e => { if (e.target.id === 'sheetBg') closeSheet(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+  $('sheetOk').addEventListener('click', () => {
+    closeSheet();
+    post('/api/dtc/clear').then(() => { fetchTelemetry(); toast('Löschbefehl gesendet'); });
+  });
+
+  $('btnPeaks').addEventListener('click', () => { post('/api/peaks/reset').then(() => { fetchTelemetry(); toast('Peak-Werte zurückgesetzt'); }); });
+  $('btnTheme').addEventListener('click', () => { post('/api/theme'); });
+
+  // 4 Hz Aktualisierungsrate (alle 250ms)
+  setInterval(fetchTelemetry, 250);
+  fetchTelemetry();
+</script>
+</body>
+</html>

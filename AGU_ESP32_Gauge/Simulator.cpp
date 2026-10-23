@@ -183,15 +183,18 @@ void MotorSimulator::update(SensorData &data) {
     // Simulierte DTCs: In BOOST_PULL und HARD_TRACK_PULL Phasen 2 Test-DTCs setzen
     if (currentPhase == SIM_BOOST_PULL || currentPhase == SIM_HARD_TRACK_PULL) {
         data.dtcCount = 2;
-        data.dtcCodes[0]  = 0x4444; // P1092 - Simulierter Ladedruck-Fehler
+        data.dtcCodes[0]  = 17476;  // VAG 17476 = P1092 - Simulierter Ladedruck-Fehler
         data.dtcStatus[0] = 0x20;   // Status: sporadisch
-        data.dtcCodes[1]  = 0x0565; // P0565 - Simulierter Geschwindigkeitssignal-Fehler
+        data.dtcCodes[1]  = 16949;  // VAG 16949 = P0565 - Simulierter Geschwindigkeitssignal-Fehler
         data.dtcStatus[1] = 0x60;   // Status: bestätigt
         data.milSeen = true;
     } else {
         data.dtcCount = 0;
         data.milSeen = false;
     }
+
+    // Im Simulator gilt der DTC-Stand immer als frisch gelesen
+    data.dtcLastReadMs = millis();
 
     // Alarme evaluieren
     data.alarmOilPressure = (data.oilPressureBar < ALARM_OIL_PRESS_MIN_WARN);

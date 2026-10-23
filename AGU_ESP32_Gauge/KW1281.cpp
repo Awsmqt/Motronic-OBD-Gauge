@@ -325,6 +325,7 @@ void KW1281Protocol::update(SensorData &data) {
                 if (requestDTCs(data)) {
                     Serial.printf("[KW1281] %d DTC(s) gelesen.\n", data.dtcCount);
                     data.milSeen = (data.dtcCount > 0);
+                    data.dtcLastReadMs = millis();
                 } else {
                     Serial.println("[KW1281] DTC-Lesung fehlgeschlagen.");
                 }
