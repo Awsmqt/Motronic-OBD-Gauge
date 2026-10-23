@@ -1,46 +1,44 @@
 #include "Simulator.h"
 
 MotorSimulator::MotorSimulator()
-    : currentPhase(SIM_IDLE),
+    : currentPhase(SIM_COLD_IDLE),
       phaseStartTime(0),
-      phaseDuration(4000),
-      currentRpm(840.0f),
+      phaseDuration(4500),
       currentBoost(-0.68f),
-      currentEgt(430.0f),
-      currentIat(24.0f),
-      currentCoolant(88.0f) {
+      currentOilPress(4.5f),
+      currentOilTemp(45.0f),
+      currentCoolant(70.0f),
+      currentChargeAir(22.0f),
+      currentEgt(420.0f),
+      currentBattery(14.1f) {
 }
 
 void MotorSimulator::begin() {
     phaseStartTime = millis();
-    currentPhase = SIM_IDLE;
+    currentPhase = SIM_COLD_IDLE;
 }
 
 void MotorSimulator::advancePhase() {
     switch (currentPhase) {
-        case SIM_IDLE:
-            currentPhase = SIM_CRUISING;
+        case SIM_COLD_IDLE:
+            currentPhase = SIM_WARM_CRUISING;
+            phaseDuration = 5000;
+            break;
+        case SIM_WARM_CRUISING:
+            currentPhase = SIM_BOOST_PULL;
             phaseDuration = 4000;
             break;
-        case SIM_CRUISING:
-            currentPhase = SIM_BOOST_RAMP;
-            phaseDuration = 3000;
-            break;
-        case SIM_BOOST_RAMP:
-            currentPhase = SIM_FULL_PULL_WOT;
+        case SIM_BOOST_PULL:
+            currentPhase = SIM_HARD_TRACK_PULL;
             phaseDuration = 4500;
             break;
-        case SIM_FULL_PULL_WOT:
-            currentPhase = SIM_GEAR_SHIFT;
-            phaseDuration = 700;
+        case SIM_HARD_TRACK_PULL:
+            currentPhase = SIM_HOT_IDLE;
+            phaseDuration = 4000;
             break;
-        case SIM_GEAR_SHIFT:
-            currentPhase = SIM_OVERRUN;
-            phaseDuration = 3500;
-            break;
-        case SIM_OVERRUN:
-            currentPhase = SIM_IDLE;
-            phaseDuration = 3000;
+        case SIM_HOT_IDLE:
+            currentPhase = SIM_WARM_CRUISING;
+            phaseDuration = 4500;
             break;
     }
     phaseStartTime = millis();
@@ -59,78 +57,59 @@ void MotorSimulator::update(SensorData &data) {
     if (progress > 1.0f) progress = 1.0f;
 
     switch (currentPhase) {
-        case SIM_IDLE:
-            // Standgas: 840 RPM, -0.68 bar Unterdruck, EGT kühlt auf 420°C ab
-            currentRpm = 840.0f + random(-20, 20);
-            currentBoost = -0.68f + ((float)random(-2, 2) / 100.0f);
-            currentEgt = currentEgt + (420.0f - currentEgt) * 0.05f;
-            currentIat = currentIat + (25.0f - currentIat) * 0.02f;
-            data.ecuEngineLoadPct = 16.5f;
-            data.ecuMafGs = 2.8f;
-            data.ecuInjectionMs = 1.8f;
-            data.ecuIgnitionAngle = 9.0f;
-            data.ecuKnockRetardMax = 0.0f;
+        case SIM_COLD_IDLE:
+            // Kaltlauf: Öldruck noch hoch (kaltes Öl ist dickflüssig ~4.2-4.5 bar)
+            currentBoost = -0.65f + ((float)random(-1, 1) / 100.0f);
+            currentOilPress = 4.2f + ((float)random(-5, 5) / 100.0f);
+            currentOilTemp = currentOilTemp + (75.0f - currentOilTemp) * 0.02f;
+            currentCoolant = currentCoolant + (88.0f - currentCoolant) * 0.03f;
+            currentChargeAir = 22.0f;
+            currentEgt = 430.0f;
+            currentBattery = 14.2f;
             break;
 
-        case SIM_CRUISING:
-            // Teillast Stadt/Landstraße: 2200 RPM, leichtes Cruisen (-0.35 bar)
-            currentRpm = 1800.0f + progress * 700.0f;
-            currentBoost = -0.45f + progress * 0.25f;
-            currentEgt = currentEgt + (580.0f - currentEgt) * 0.04f;
-            currentIat = currentIat + (28.0f - currentIat) * 0.02f;
-            data.ecuEngineLoadPct = 35.0f;
-            data.ecuMafGs = 22.0f;
-            data.ecuInjectionMs = 3.6f;
-            data.ecuIgnitionAngle = 24.0f;
-            data.ecuKnockRetardMax = 0.0f;
+        case SIM_WARM_CRUISING:
+            // Warmgefahrener Motor im Teillastbetrieb
+            currentBoost = -0.30f + progress * 0.2f;
+            currentOilPress = 3.6f + progress * 0.4f; // 3.6 -> 4.0 bar bei Drehzahl
+            currentOilTemp = currentOilTemp + (92.0f - currentOilTemp) * 0.04f;
+            currentCoolant = 90.0f + ((float)random(-3, 3) / 10.0f);
+            currentChargeAir = 26.0f + progress * 4.0f;
+            currentEgt = 560.0f + progress * 100.0f;
+            currentBattery = 13.9f;
             break;
 
-        case SIM_BOOST_RAMP:
-            // Ladedruckaufbau: K03/K04 Lader spult hoch!
-            currentRpm = 2500.0f + progress * 2000.0f; // 2500 -> 4500 RPM
-            currentBoost = -0.1f + progress * 1.35f;   // Bis 1.25 bar
-            currentEgt = currentEgt + (780.0f - currentEgt) * 0.06f;
-            currentIat = currentIat + (38.0f - currentIat) * 0.03f;
-            data.ecuEngineLoadPct = 85.0f + progress * 40.0f;
-            data.ecuMafGs = 50.0f + progress * 70.0f;
-            data.ecuInjectionMs = 8.5f + progress * 6.0f;
-            data.ecuIgnitionAngle = 16.0f;
-            data.ecuKnockRetardMax = 0.75f;
+        case SIM_BOOST_PULL:
+            // Beschleunigung mit Ladedruck
+            currentBoost = 0.2f + progress * 1.05f; // Bis 1.25 bar
+            currentOilPress = 4.5f + progress * 0.4f; // ca. 4.8 bar Öldruck bei hoher Drehzahl
+            currentOilTemp = currentOilTemp + (102.0f - currentOilTemp) * 0.05f;
+            currentCoolant = 91.0f + progress * 2.0f;
+            currentChargeAir = 30.0f + progress * 12.0f; // LLK erwärmt sich auf 42°C
+            currentEgt = 680.0f + progress * 180.0f;     // EGT steigt auf 860°C
+            currentBattery = 13.8f;
             break;
 
-        case SIM_FULL_PULL_WOT:
-            // Volllast (Wide Open Throttle): 4500 -> 6500 RPM, Overboost 1.38 bar, EGT klettert auf 920°C!
-            currentRpm = 4500.0f + progress * 2000.0f;
-            currentBoost = 1.38f - progress * 0.18f; // Haltedruck fällt bei hoher Drehzahl leicht ab
-            currentEgt = currentEgt + (925.0f - currentEgt) * 0.05f; // Erreicht Alarmzone!
-            currentIat = currentIat + (52.0f - currentIat) * 0.04f;  // Ladeluft erwärmt sich
-            data.ecuEngineLoadPct = 145.0f;
-            data.ecuMafGs = 120.0f + progress * 55.0f; // Bis 175 g/s
-            data.ecuInjectionMs = 17.5f;
-            data.ecuIgnitionAngle = 18.0f - progress * 3.0f;
-            data.ecuKnockRetardMax = (currentEgt > 900.0f) ? 2.25f : 0.75f;
+        case SIM_HARD_TRACK_PULL:
+            // Volllast / Autobahn-Sprint: Hohe Belastung für Öl, Wasser und Ladeluft
+            currentBoost = 1.35f - progress * 0.10f;
+            currentOilPress = 4.7f;
+            currentOilTemp = currentOilTemp + (116.0f - currentOilTemp) * 0.05f; // Öl wird heiß (112°C+)
+            currentCoolant = 93.0f + progress * 3.0f;
+            currentChargeAir = 42.0f + progress * 14.0f; // Ladeluft klettert auf 56°C (Heat-Soak)
+            currentEgt = 860.0f + progress * 65.0f;      // EGT klettert auf 925°C (Warnschwelle!)
+            currentBattery = 13.7f;
             break;
 
-        case SIM_GEAR_SHIFT:
-            // Gangwechsel: Drosselklappe schließt, Blow-Off öffnet!
-            currentRpm = 6500.0f - progress * 2200.0f; // Fällt auf 4300
-            currentBoost = -0.30f;                      // Ladedruck bricht schlagartig ein
-            data.ecuEngineLoadPct = 20.0f;
-            data.ecuMafGs = 10.0f;
-            data.ecuInjectionMs = 0.0f;
-            break;
-
-        case SIM_OVERRUN:
-            // Schubabschaltung (Motorbremse): Einspritzung 0ms, starker Unterdruck (-0.80 bar)
-            currentRpm = 4300.0f - progress * 2500.0f; // Abtouren
-            currentBoost = -0.78f + ((float)random(-1, 1) / 100.0f);
-            currentEgt = currentEgt + (480.0f - currentEgt) * 0.03f;
-            currentIat = currentIat + (27.0f - currentIat) * 0.02f;
-            data.ecuEngineLoadPct = 12.0f;
-            data.ecuMafGs = 3.5f;
-            data.ecuInjectionMs = 0.0f;
-            data.ecuIgnitionAngle = 5.0f;
-            data.ecuKnockRetardMax = 0.0f;
+        case SIM_HOT_IDLE:
+            // Ampelstopp nach harter Fahrt (Öl heiß & dünnflüssig -> Öldruck fällt auf 1.5 bar)
+            currentBoost = -0.72f;
+            currentOilPress = 1.55f + ((float)random(-3, 3) / 100.0f); // Warmer Leerlauf-Öldruck
+            currentOilTemp = currentOilTemp + (98.0f - currentOilTemp) * 0.03f;
+            currentCoolant = 94.0f; // Lüfter läuft an
+            currentChargeAir = currentChargeAir + (35.0f - currentChargeAir) * 0.03f;
+            currentEgt = currentEgt + (490.0f - currentEgt) * 0.05f;
+            currentBattery = 13.6f;
             break;
     }
 
@@ -138,20 +117,32 @@ void MotorSimulator::update(SensorData &data) {
     data.boostBar = currentBoost;
     if (data.boostBar > data.boostPeakBar) data.boostPeakBar = data.boostBar;
 
+    data.oilPressureBar = currentOilPress;
+    if (data.oilTemp > 80.0f) {
+        if (data.oilPressureMinBar <= 0.0f || data.oilPressureBar < data.oilPressureMinBar) {
+            data.oilPressureMinBar = data.oilPressureBar;
+        }
+    }
+
+    data.oilTemp = currentOilTemp;
+    if (data.oilTemp > data.oilTempPeak) data.oilTempPeak = data.oilTemp;
+
+    data.coolantTemp = currentCoolant;
+    data.chargeAirTemp = currentChargeAir;
     data.exhaustTemp = currentEgt;
     if (data.exhaustTemp > data.exhaustTempPeak) data.exhaustTempPeak = data.exhaustTemp;
 
-    data.chargeAirTemp = currentIat;
-    data.ecuRpm = (int)currentRpm;
-    data.ecuCoolantTemp = 90.0f + ((float)random(-5, 5) / 10.0f);
-    data.ecuIntakeAirTemp = currentIat - 3.0f;
-    data.ecuBatteryVolt = 13.8f + ((float)random(-1, 1) / 10.0f);
+    data.batteryVolt = currentBattery;
+    data.ecuRpm = (currentBoost > 0.0f) ? 4500 : 880;
     data.klineConnected = true;
     data.klinePackets++;
 
     // Alarme evaluieren
+    data.alarmOilPressure = (data.oilPressureBar < ALARM_OIL_PRESS_MIN_WARN);
+    data.alarmOilTemp = (data.oilTemp >= ALARM_OIL_TEMP_WARN);
+    data.alarmCoolant = (data.coolantTemp >= ALARM_COOLANT_HIGH);
+    data.alarmChargeAir = (data.chargeAirTemp >= ALARM_IAT_HIGH);
     data.alarmEgt = (data.exhaustTemp >= ALARM_EGT_WARN);
     data.alarmBoost = (data.boostBar >= ALARM_BOOST_OVERBOOST);
-    data.alarmCoolant = (data.ecuCoolantTemp >= ALARM_COOLANT_HIGH);
-    data.alarmChargeAir = (data.chargeAirTemp >= ALARM_IAT_HIGH);
+    data.alarmBattery = (data.batteryVolt < ALARM_BATTERY_LOW || data.batteryVolt > ALARM_BATTERY_HIGH);
 }

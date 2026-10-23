@@ -5,12 +5,11 @@
 #include "Config.h"
 
 enum SimPhase {
-    SIM_IDLE = 0,
-    SIM_CRUISING,
-    SIM_BOOST_RAMP,
-    SIM_FULL_PULL_WOT,
-    SIM_GEAR_SHIFT,
-    SIM_OVERRUN
+    SIM_COLD_IDLE = 0,
+    SIM_WARM_CRUISING,
+    SIM_BOOST_PULL,
+    SIM_HARD_TRACK_PULL,
+    SIM_HOT_IDLE
 };
 
 class MotorSimulator {
@@ -23,11 +22,14 @@ private:
     SimPhase currentPhase;
     unsigned long phaseStartTime;
     unsigned long phaseDuration;
-    float currentRpm;
+
     float currentBoost;
-    float currentEgt;
-    float currentIat;
+    float currentOilPress;
+    float currentOilTemp;
     float currentCoolant;
+    float currentChargeAir;
+    float currentEgt;
+    float currentBattery;
 
     void advancePhase();
 };

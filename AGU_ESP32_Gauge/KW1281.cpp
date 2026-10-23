@@ -160,7 +160,7 @@ void KW1281Protocol::decodeField(uint8_t formula, uint8_t a, uint8_t b, int fiel
             break;
         case 5: // Kühlmittel / IAT: 0.1 * (a - 100) oder a * 1 - 50
             if (fieldIndex == 1) {
-                sensorData.ecuCoolantTemp = (float)a - 50.0f;
+                sensorData.coolantTemp = (float)a - 50.0f;
             } else if (fieldIndex == 3) {
                 sensorData.ecuIntakeAirTemp = (float)a - 50.0f;
             }
@@ -175,18 +175,7 @@ void KW1281Protocol::decodeField(uint8_t formula, uint8_t a, uint8_t b, int fiel
             }
             break;
         case 21: // Spannung: 0.001 * a * b
-            sensorData.ecuBatteryVolt = 0.001f * (float)a * (float)b;
-            break;
-        case 25: // Einspritzzeit: a * 0.05 ms
-            sensorData.ecuInjectionMs = (float)a * 0.05f;
-            break;
-        case 36: // Zündwinkel: a * 0.4 °KW
-            sensorData.ecuIgnitionAngle = (float)a * 0.4f;
-            break;
-        case 37: // Klopfregelung Zündwinkelrücknahme: a * 0.75 °KW
-            if ((float)a * 0.75f > sensorData.ecuKnockRetardMax) {
-                sensorData.ecuKnockRetardMax = (float)a * 0.75f;
-            }
+            sensorData.batteryVolt = 0.001f * (float)a * (float)b;
             break;
         default:
             break;

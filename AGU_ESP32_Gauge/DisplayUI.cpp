@@ -9,7 +9,7 @@ DisplayUI::DisplayUI()
 
 void DisplayUI::begin() {
     tft.init();
-    tft.setRotation(1); // Querformat (320x240)
+    tft.setRotation(1); // 320x240 Querformat
     tft.fillScreen(TFT_BLACK);
 }
 
@@ -29,10 +29,12 @@ void DisplayUI::checkTouch(SensorData &data) {
             wasTouched = true;
             touchPressStart = millis();
         } else {
-            // Langes Drücken (> 1.5 Sekunden) setzt Peak-Werte zurück
+            // Langes Drücken (> 1.5s): Min/Max-Werte zurücksetzen
             if (millis() - touchPressStart > 1500) {
                 data.boostPeakBar = data.boostBar;
                 data.exhaustTempPeak = data.exhaustTemp;
+                data.oilTempPeak = data.oilTemp;
+                data.oilPressureMinBar = data.oilPressureBar;
                 tft.fillScreen(TFT_BLACK);
                 touchPressStart = millis();
             }
@@ -49,24 +51,23 @@ void DisplayUI::checkTouch(SensorData &data) {
 }
 
 void DisplayUI::update(const SensorData &data) {
-    // Falls Theme gewechselt wurde, Bildschirmhintergrund neu zeichnen
     if (data.currentTheme != lastRenderedTheme) {
         lastRenderedTheme = data.currentTheme;
         initTheme(data.currentTheme);
     }
 
     switch (data.currentTheme) {
-        case THEME_CLASSIC_QUAD:
-            renderClassicQuad(data);
+        case THEME_HEALTH_GRID:
+            renderHealthGrid(data);
             break;
-        case THEME_SPORT_CLUSTER:
-            renderSportCluster(data);
+        case THEME_PRESSURE_TEMP:
+            renderPressureTemp(data);
             break;
-        case THEME_OEM_PLUS:
-            renderOemPlus(data);
+        case THEME_OEM_VDO:
+            renderOemVdo(data);
             break;
-        case THEME_DATA_MATRIX:
-            renderDataMatrix(data);
+        case THEME_MONITOR_MATRIX:
+            renderMonitorMatrix(data);
             break;
         default:
             break;
@@ -76,283 +77,313 @@ void DisplayUI::update(const SensorData &data) {
 void DisplayUI::initTheme(DisplayTheme theme) {
     tft.fillScreen(TFT_BLACK);
 
-    if (theme == THEME_CLASSIC_QUAD) {
-        // Trennlinien für 4 Kacheln
-        tft.drawFastHLine(0, 120, 320, COLOR_GRID_BORDER);
-        tft.drawFastVLine(160, 0, 240, COLOR_GRID_BORDER);
-    } else if (theme == THEME_OEM_PLUS) {
-        // Golf 4 tiefblauer Hintergrund
+    if (theme == THEME_HEALTH_GRID) {
+        // Trennlinien für 6 Kacheln (2 Spalten x 3 Zeilen) + Footer
+        tft.drawFastHLine(0, 68, 320, COLOR_GRID_BORDER);
+        tft.drawFastHLine(0, 138, 320, COLOR_GRID_BORDER);
+        tft.drawFastHLine(0, 208, 320, COLOR_GRID_BORDER);
+        tft.drawFastVLine(160, 0, 208, COLOR_GRID_BORDER);
+    } else if (theme == THEME_PRESSURE_TEMP) {
+        // Oberer Bereich für Drücke, unterer für Temperaturen
+        tft.drawFastHLine(0, 115, 320, COLOR_GRID_BORDER);
+        tft.drawFastVLine(160, 0, 115, COLOR_GRID_BORDER);
+    } else if (theme == THEME_OEM_VDO) {
         tft.fillScreen(COLOR_OEM_BLUE);
-        // Zentrales MFA Display (Rot-brauner Rahmen)
-        tft.drawRoundRect(105, 30, 110, 180, 4, COLOR_OEM_RED);
-        tft.fillRoundRect(107, 32, 106, 176, 3, 0x3800); // Sehr dunkles MFA Rot
+        // Zentrales MFA Bordcomputer-Gehäuse
+        tft.drawRoundRect(108, 15, 104, 210, 4, COLOR_OEM_RED);
+        tft.fillRoundRect(110, 17, 100, 206, 3, 0x2800); // Dunkles MFA-Rot
     }
 }
 
 // ==============================================================================
-// DESIGN-STUDIE 1: KLASSISCHES 4-GRID (CLASSIC QUAD)
+// THEME 1: ENGINE HEALTH GRID (6 KACHELN: 2 DRÜCKE, 4 TEMPERATUREN + FOOTER)
 // ==============================================================================
-void DisplayUI::renderClassicQuad(const SensorData &data) {
+void DisplayUI::drawHealthTile(int x, int y, int w, int h, const char *label, const char *valStr, const char *unit, const char *subtext, uint16_t valColor) {
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString(label, x + 6, y + 5, 1);
+
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(valColor, TFT_BLACK);
+    tft.drawString(valStr, x + w - 30, y + 20, 4);
+
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tft.drawString(unit, x + w - 26, y + 32, 1);
+
+    tft.setTextDatum(BL_DATUM);
+    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tft.drawString(subtext, x + 6, y + h - 4, 1);
+}
+
+void DisplayUI::renderHealthGrid(const SensorData &data) {
+    char val[16], sub[24];
+
+    // --- ZEILE 1: DRÜCKE ---
+    // Kachel 1: Ladedruck
+    dtostrf(data.boostBar, 4, 2, val);
+    snprintf(sub, sizeof(sub), "Peak: %.2f bar", data.boostPeakBar);
+    uint16_t boostCol = data.alarmBoost ? TFT_RED : (data.boostBar < 0 ? TFT_WHITE : COLOR_ACCENT_CYAN);
+    drawHealthTile(0, 0, 160, 68, "LADEDRUCK", val, "bar", sub, boostCol);
+
+    // Kachel 2: Öldruck
+    dtostrf(data.oilPressureBar, 4, 1, val);
+    snprintf(sub, sizeof(sub), "Min: %.1f bar", data.oilPressureMinBar);
+    uint16_t oilPressCol = data.alarmOilPressure ? TFT_RED : (data.oilPressureBar < 2.0f ? COLOR_ACCENT_YELLOW : COLOR_ACCENT_GREEN);
+    drawHealthTile(160, 0, 160, 68, "OELDRUCK", val, "bar", sub, oilPressCol);
+
+    // --- ZEILE 2: MOTOR-TEMPERATUREN ---
+    // Kachel 3: Öltemperatur
+    snprintf(val, sizeof(val), "%.0f", data.oilTemp);
+    snprintf(sub, sizeof(sub), "Max: %.0f C", data.oilTempPeak);
+    uint16_t oilTempCol = COLOR_ACCENT_GREEN;
+    if (data.oilTemp < ALARM_OIL_TEMP_COLD) oilTempCol = COLOR_COLD_BLUE; // Kalt <75°C
+    else if (data.alarmOilTemp) oilTempCol = TFT_RED;
+    else if (data.oilTemp > 115.0f) oilTempCol = COLOR_ACCENT_YELLOW;
+    drawHealthTile(0, 69, 160, 68, "OELTEMPERATUR", val, "C", sub, oilTempCol);
+
+    // Kachel 4: Kühlwassertemperatur
+    snprintf(val, sizeof(val), "%.0f", data.coolantTemp);
+    snprintf(sub, sizeof(sub), "Soll: 90 C");
+    uint16_t coolCol = data.alarmCoolant ? TFT_RED : (data.coolantTemp > 98.0f ? COLOR_ACCENT_YELLOW : TFT_WHITE);
+    drawHealthTile(160, 69, 160, 68, "KUEHLWASSER", val, "C", sub, coolCol);
+
+    // --- ZEILE 3: LADELUFT & ABGAS ---
+    // Kachel 5: Ladelufttemperatur (nach LLK)
+    snprintf(val, sizeof(val), "%.1f", data.chargeAirTemp);
+    snprintf(sub, sizeof(sub), "ECU: %.0f C", data.ecuIntakeAirTemp);
+    uint16_t iatCol = data.alarmChargeAir ? TFT_RED : (data.chargeAirTemp > 45.0f ? COLOR_ACCENT_YELLOW : COLOR_ACCENT_GREEN);
+    drawHealthTile(0, 139, 160, 68, "LADELUFT (LLK)", val, "C", sub, iatCol);
+
+    // Kachel 6: Abgastemperatur EGT
+    snprintf(val, sizeof(val), "%d", (int)data.exhaustTemp);
+    snprintf(sub, sizeof(sub), "Max: %d C", (int)data.exhaustTempPeak);
+    uint16_t egtCol = data.alarmEgt ? TFT_RED : (data.exhaustTemp > 850.0f ? COLOR_ACCENT_YELLOW : COLOR_ACCENT_ORANGE);
+    drawHealthTile(160, 139, 160, 68, "ABGAS (EGT)", val, "C", sub, egtCol);
+
+    // --- FOOTER ZEILE: BORDSPANNUNG & DIAGNOSE ---
+    tft.setTextDatum(ML_DATUM);
+    tft.setTextColor(data.alarmBattery ? TFT_RED : TFT_WHITE, TFT_BLACK);
+    snprintf(val, sizeof(val), "BATT: %.1f V", data.batteryVolt);
+    tft.drawString(val, 12, 224, 2);
+
+    tft.setTextDatum(MR_DATUM);
+    tft.setTextColor(data.klineConnected ? COLOR_ACCENT_GREEN : TFT_DARKGREY, TFT_BLACK);
+    tft.drawString(data.klineConnected ? "ECU K-LINE OK" : "K-LINE OFFLINE", 308, 224, 2);
+}
+
+// ==============================================================================
+// THEME 2: TWIN PRESSURES & QUAD TEMPERATURES
+// ==============================================================================
+void DisplayUI::drawHorizontalBar(int x, int y, int w, int h, float val, float minV, float maxV, uint16_t barCol) {
+    tft.drawRect(x, y, w, h, COLOR_GRID_BORDER);
+    float pct = (val - minV) / (maxV - minV);
+    if (pct < 0.0f) pct = 0.0f;
+    if (pct > 1.0f) pct = 1.0f;
+    int fillW = (int)(pct * (w - 4));
+    tft.fillRect(x + 2, y + 2, fillW, h - 4, barCol);
+    tft.fillRect(x + 2 + fillW, y + 2, (w - 4) - fillW, h - 4, TFT_BLACK);
+}
+
+void DisplayUI::renderPressureTemp(const SensorData &data) {
     char buf[16];
 
-    // --- KACHEL 1 (Oben Links): LADEDRUCK ---
+    // OBERE HAELFTE: GROSSE DRÜCKE
+    // 1. Ladedruck Links
     tft.setTextDatum(TC_DATUM);
     tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
     tft.drawString("LADEDRUCK (bar)", 80, 8, 2);
 
-    // Wert & Farbe (Cyan im Ladedruckbereich, Weiß im Unterdruck, Rot bei Overboost)
-    uint16_t boostCol = COLOR_ACCENT_CYAN;
-    if (data.boostBar < 0.0f) boostCol = TFT_WHITE;
-    if (data.alarmBoost) boostCol = TFT_RED;
-
     dtostrf(data.boostBar, 4, 2, buf);
+    uint16_t boostCol = data.alarmBoost ? TFT_RED : (data.boostBar < 0 ? TFT_WHITE : COLOR_ACCENT_CYAN);
     tft.setTextColor(boostCol, TFT_BLACK);
-    tft.drawString(buf, 80, 35, 6); // Große Font
+    tft.drawString(buf, 80, 32, 6); // Riesen-Font
 
-    // Peak-Anzeige darunter
-    snprintf(buf, sizeof(buf), "Peak: %.2f bar", data.boostPeakBar);
-    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.drawString(buf, 80, 95, 2);
+    drawHorizontalBar(15, 88, 130, 10, data.boostBar, -1.0f, 2.0f, boostCol);
 
-    // --- KACHEL 2 (Oben Rechts): ABGASTEMPERATUR EGT ---
+    // 2. Öldruck Rechts
     tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tft.drawString("ABGASTEMP (C)", 240, 8, 2);
+    tft.drawString("OELDRUCK (bar)", 240, 8, 2);
 
-    uint16_t egtCol = COLOR_ACCENT_ORANGE;
-    if (data.exhaustTemp >= ALARM_EGT_CRITICAL) egtCol = TFT_RED;
-    else if (data.exhaustTemp >= ALARM_EGT_WARN) egtCol = COLOR_ACCENT_YELLOW;
+    dtostrf(data.oilPressureBar, 4, 1, buf);
+    uint16_t oilCol = data.alarmOilPressure ? TFT_RED : (data.oilPressureBar < 2.0f ? COLOR_ACCENT_YELLOW : COLOR_ACCENT_GREEN);
+    tft.setTextColor(oilCol, TFT_BLACK);
+    tft.drawString(buf, 240, 32, 6);
 
-    snprintf(buf, sizeof(buf), "%d", (int)data.exhaustTemp);
-    tft.setTextColor(egtCol, TFT_BLACK);
-    tft.drawString(buf, 240, 35, 6);
+    drawHorizontalBar(175, 88, 130, 10, data.oilPressureBar, 0.0f, 7.0f, oilCol);
 
-    snprintf(buf, sizeof(buf), "Max: %d C", (int)data.exhaustTempPeak);
-    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.drawString(buf, 240, 95, 2);
+    // UNTERE HAELFTE: DIE 4 TEMPERATUREN NEBENEINANDER (4 Spalten à 75px)
+    int colW = 75;
+    int yTop = 125;
 
-    // --- KACHEL 3 (Unten Links): LADELUFTTEMPERATUR (IAT) ---
-    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tft.drawString("LADELUFT (C)", 80, 128, 2);
-
-    uint16_t iatCol = COLOR_ACCENT_GREEN;
-    if (data.alarmChargeAir) iatCol = TFT_RED;
-    else if (data.chargeAirTemp > 45.0f) iatCol = COLOR_ACCENT_YELLOW;
-
-    snprintf(buf, sizeof(buf), "%.1f", data.chargeAirTemp);
-    tft.setTextColor(iatCol, TFT_BLACK);
-    tft.drawString(buf, 80, 155, 6);
-
-    snprintf(buf, sizeof(buf), "ECU: %.0f C", data.ecuIntakeAirTemp);
-    tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.drawString(buf, 80, 215, 2);
-
-    // --- KACHEL 4 (Unten Rechts): DREHZAHL & KUEHLWASSER ---
-    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tft.drawString("DREHZAHL / WASSER", 240, 128, 2);
-
-    snprintf(buf, sizeof(buf), "%d", data.ecuRpm);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString(buf, 240, 155, 6);
-
-    uint16_t waterCol = TFT_CYAN;
-    if (data.alarmCoolant) waterCol = TFT_RED;
-    snprintf(buf, sizeof(buf), "Wasser: %.0f C", data.ecuCoolantTemp);
-    tft.setTextColor(waterCol, TFT_BLACK);
-    tft.drawString(buf, 240, 215, 2);
-}
-
-// ==============================================================================
-// DESIGN-STUDIE 2: SPORT / TRACK RACE CLUSTER
-// ==============================================================================
-void DisplayUI::drawRpmShiftBar(int x, int y, int w, int h, int rpm, int maxRpm) {
-    int segments = 16;
-    int segW = (w / segments) - 2;
-    int activeSegs = (rpm * segments) / maxRpm;
-    if (activeSegs > segments) activeSegs = segments;
-
-    for (int i = 0; i < segments; i++) {
-        uint16_t segCol = TFT_DARKGREY;
-        if (i < activeSegs) {
-            if (i < 9) segCol = COLOR_ACCENT_GREEN;       // 0 - 4500 RPM
-            else if (i < 13) segCol = COLOR_ACCENT_YELLOW; // 4500 - 5800 RPM
-            else segCol = TFT_RED;                         // > 5800 RPM (Schaltblitz)
-        }
-        tft.fillRect(x + i * (segW + 2), y, segW, h, segCol);
-    }
-}
-
-void DisplayUI::renderSportCluster(const SensorData &data) {
-    char buf[16];
-
-    // 1. Drehzahlband oben (F1 / GT3 Shift-Light)
-    drawRpmShiftBar(10, 10, 300, 14, data.ecuRpm, 7000);
-
-    // Drehzahl in Ziffern klein daneben
-    snprintf(buf, sizeof(buf), "%d RPM", data.ecuRpm);
-    tft.setTextDatum(TR_DATUM);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString(buf, 310, 28, 2);
-
-    // 2. Riesige Ladedruckanzeige in der Bildschirmmitte
+    // Col 1: Öltemp
     tft.setTextDatum(TC_DATUM);
     tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tft.drawString("BOOST PRESSURE", 160, 48, 2);
+    tft.drawString("OEL", 40, yTop, 2);
+    snprintf(buf, sizeof(buf), "%.0f C", data.oilTemp);
+    uint16_t oCol = (data.oilTemp < 75) ? COLOR_COLD_BLUE : (data.alarmOilTemp ? TFT_RED : COLOR_ACCENT_GREEN);
+    tft.setTextColor(oCol, TFT_BLACK);
+    tft.drawString(buf, 40, yTop + 24, 4);
+    drawHorizontalBar(8, yTop + 55, 64, 8, data.oilTemp, 40.0f, 140.0f, oCol);
 
-    uint16_t boostCol = COLOR_ACCENT_CYAN;
-    if (data.alarmBoost) boostCol = TFT_RED;
-    dtostrf(data.boostBar, 4, 2, buf);
-    tft.setTextColor(boostCol, TFT_BLACK);
-    tft.drawString(buf, 160, 70, 7); // 7-Segment Riesenfont
+    // Col 2: Kühlwasser
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("WASSER", 120, yTop, 2);
+    snprintf(buf, sizeof(buf), "%.0f C", data.coolantTemp);
+    uint16_t wCol = data.alarmCoolant ? TFT_RED : TFT_CYAN;
+    tft.setTextColor(wCol, TFT_BLACK);
+    tft.drawString(buf, 120, yTop + 24, 4);
+    drawHorizontalBar(88, yTop + 55, 64, 8, data.coolantTemp, 40.0f, 120.0f, wCol);
 
-    snprintf(buf, sizeof(buf), "PEAK: %.2f BAR", data.boostPeakBar);
+    // Col 3: Ladeluft
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("LADELUFT", 200, yTop, 2);
+    snprintf(buf, sizeof(buf), "%.0f C", data.chargeAirTemp);
+    uint16_t iCol = data.alarmChargeAir ? TFT_RED : COLOR_ACCENT_GREEN;
+    tft.setTextColor(iCol, TFT_BLACK);
+    tft.drawString(buf, 200, yTop + 24, 4);
+    drawHorizontalBar(168, yTop + 55, 64, 8, data.chargeAirTemp, 10.0f, 70.0f, iCol);
+
+    // Col 4: Abgas EGT
+    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tft.drawString("EGT", 280, yTop, 2);
+    snprintf(buf, sizeof(buf), "%d", (int)data.exhaustTemp);
+    uint16_t eCol = data.alarmEgt ? TFT_RED : COLOR_ACCENT_ORANGE;
+    tft.setTextColor(eCol, TFT_BLACK);
+    tft.drawString(buf, 280, yTop + 24, 4);
+    drawHorizontalBar(248, yTop + 55, 64, 8, data.exhaustTemp, 300.0f, 1050.0f, eCol);
+
+    // Batteriespannung ganz unten
+    tft.setTextDatum(MC_DATUM);
     tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.drawString(buf, 160, 145, 2);
-
-    // 3. Linker Vertikalbalken: Abgastemperatur EGT (0 - 1000 °C)
-    int egtHeight = (int)((data.exhaustTemp / 1000.0f) * 80.0f);
-    if (egtHeight > 80) egtHeight = 80;
-    tft.drawRect(15, 60, 18, 84, TFT_DARKGREY);
-    tft.fillRect(17, 62 + (80 - egtHeight), 14, egtHeight, (data.alarmEgt ? TFT_RED : COLOR_ACCENT_ORANGE));
-    tft.fillRect(17, 62, 14, 80 - egtHeight, TFT_BLACK); // Löschen
-
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    snprintf(buf, sizeof(buf), "EGT: %d C", (int)data.exhaustTemp);
-    tft.drawString(buf, 10, 150, 2);
-
-    // 4. Untere Kacheln: Ladeluft & Kühlmittel & K-Line Status
-    tft.drawFastHLine(0, 180, 320, COLOR_GRID_BORDER);
-
-    // Ladeluft
-    tft.drawString("IAT (Ladeluft):", 15, 190, 2);
-    snprintf(buf, sizeof(buf), "%.1f C", data.chargeAirTemp);
-    tft.setTextColor((data.alarmChargeAir ? TFT_RED : COLOR_ACCENT_GREEN), TFT_BLACK);
-    tft.drawString(buf, 120, 190, 2);
-
-    // Kühlwasser
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("Kuehlwasser:", 15, 212, 2);
-    snprintf(buf, sizeof(buf), "%.0f C", data.ecuCoolantTemp);
-    tft.setTextColor((data.alarmCoolant ? TFT_RED : TFT_CYAN), TFT_BLACK);
-    tft.drawString(buf, 120, 212, 2);
-
-    // Luftmasse & Last
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    snprintf(buf, sizeof(buf), "MAF: %.1f g/s", data.ecuMafGs);
-    tft.drawString(buf, 200, 190, 2);
-
-    snprintf(buf, sizeof(buf), "Load: %.0f %%", data.ecuEngineLoadPct);
-    tft.drawString(buf, 200, 212, 2);
+    snprintf(buf, sizeof(buf), "Bordspannung: %.1f Volt", data.batteryVolt);
+    tft.drawString(buf, 160, 222, 2);
 }
 
 // ==============================================================================
-// DESIGN-STUDIE 3: OEM+ LOOK (GOLF 4 / AUDI A3 TACHO-DESIGN)
+// THEME 3: OEM+ GOLF 4 VDO LOOK (DRÜCKE ALS RUNDINSTRUMENTE, TEMPERATUREN IM MFA)
 // ==============================================================================
-void DisplayUI::renderOemPlus(const SensorData &data) {
-    char buf[16];
+void DisplayUI::drawVdoDial(int cx, int cy, int r, float val, float minV, float maxV, const char *unit, const char *title, uint16_t needleCol) {
+    tft.drawCircle(cx, cy, r, TFT_WHITE);
+    tft.drawCircle(cx, cy, r - 1, TFT_WHITE);
 
-    // Linke Rundinstrument-Simulation: Ladedruck (-1 bis +2 bar)
-    // Tacho-Zifferblatt Links (Zentrum x=52, y=110, r=46)
-    tft.drawCircle(52, 110, 46, TFT_WHITE);
-    tft.drawCircle(52, 110, 45, TFT_WHITE);
+    // Beschriftung
     tft.setTextDatum(MC_DATUM);
     tft.setTextColor(TFT_WHITE, COLOR_OEM_BLUE);
-    tft.drawString("BAR", 52, 85, 2);
+    tft.drawString(title, cx, cy - 22, 1);
+    tft.drawString(unit, cx, cy - 8, 1);
 
-    dtostrf(data.boostBar, 4, 2, buf);
+    // Digitalwert
+    char buf[10];
+    if (maxV <= 5.0f) dtostrf(val, 4, 2, buf);
+    else dtostrf(val, 3, 1, buf);
     tft.setTextColor(COLOR_OEM_RED, COLOR_OEM_BLUE);
-    tft.drawString(buf, 52, 115, 4);
+    tft.drawString(buf, cx, cy + 22, 2);
 
-    tft.setTextColor(TFT_WHITE, COLOR_OEM_BLUE);
-    tft.drawString("-1.0", 25, 138, 1);
-    tft.drawString("+2.0", 80, 138, 1);
+    // Nadel (Winkel: 135° bis 405°)
+    float pct = (val - minV) / (maxV - minV);
+    if (pct < 0.0f) pct = 0.0f;
+    if (pct > 1.0f) pct = 1.0f;
+    float angle = 2.356f + pct * 3.1415f; // Radian
 
-    // Rechte Rundinstrument-Simulation: EGT (0 - 1100 °C)
-    // Tacho-Zifferblatt Rechts (Zentrum x=268, y=110, r=46)
-    tft.drawCircle(268, 110, 46, TFT_WHITE);
-    tft.drawCircle(268, 110, 45, TFT_WHITE);
-    tft.setTextColor(TFT_WHITE, COLOR_OEM_BLUE);
-    tft.drawString("EGT", 268, 85, 2);
+    int nx = cx + (int)(cos(angle) * (r - 8));
+    int ny = cy + (int)(sin(angle) * (r - 8));
+    tft.drawLine(cx, cy, nx, ny, needleCol);
+    tft.fillCircle(cx, cy, 4, TFT_WHITE);
+}
 
-    snprintf(buf, sizeof(buf), "%d", (int)data.exhaustTemp);
-    tft.setTextColor(COLOR_OEM_RED, COLOR_OEM_BLUE);
-    tft.drawString(buf, 268, 115, 4);
+void DisplayUI::renderOemVdo(const SensorData &data) {
+    // Rundinstrument Links: Ladedruck (-1.0 bis +2.0 bar)
+    drawVdoDial(54, 120, 50, data.boostBar, -1.0f, 2.0f, "bar", "BOOST", COLOR_OEM_RED);
 
-    tft.setTextColor(TFT_WHITE, COLOR_OEM_BLUE);
-    tft.drawString("0", 240, 138, 1);
-    tft.drawString("1100", 295, 138, 1);
+    // Rundinstrument Rechts: Öldruck (0 bis 7.0 bar)
+    drawVdoDial(266, 120, 50, data.oilPressureBar, 0.0f, 7.0f, "bar", "OELDRUCK", COLOR_OEM_RED);
 
-    // Zentrales MFA Display (VW Bordcomputer / FIS Look in der Mitte)
-    uint16_t mfaBg = 0x3800;
-    tft.setTextColor(COLOR_OEM_RED, mfaBg);
+    // Zentrales MFA Bordcomputer Display (Mitte)
+    char buf[20];
+    uint16_t mfaBg = 0x2800;
     tft.setTextDatum(TC_DATUM);
-    tft.drawString("MFA 1.8T", 160, 40, 2);
+    tft.setTextColor(COLOR_OEM_RED, mfaBg);
+    tft.drawString("VDO MFA", 160, 22, 1);
 
-    tft.drawString("LADELUFT", 160, 68, 1);
+    // Öltemperatur
+    tft.drawString("OELTEMP", 160, 42, 1);
+    snprintf(buf, sizeof(buf), "%.0f C", data.oilTemp);
+    tft.drawString(buf, 160, 56, 4);
+
+    // Kühlwasser
+    tft.drawString("WASSER", 160, 88, 1);
+    snprintf(buf, sizeof(buf), "%.0f C", data.coolantTemp);
+    tft.drawString(buf, 160, 102, 4);
+
+    // Ladeluft
+    tft.drawString("LADELUFT", 160, 134, 1);
     snprintf(buf, sizeof(buf), "%.1f C", data.chargeAirTemp);
-    tft.drawString(buf, 160, 80, 4);
+    tft.drawString(buf, 160, 148, 2);
 
-    tft.drawString("WASSER", 160, 115, 1);
-    snprintf(buf, sizeof(buf), "%.0f C", data.ecuCoolantTemp);
-    tft.drawString(buf, 160, 127, 4);
+    // Abgastemperatur EGT
+    tft.drawString("ABGAS EGT", 160, 172, 1);
+    snprintf(buf, sizeof(buf), "%d C", (int)data.exhaustTemp);
+    tft.drawString(buf, 160, 186, 2);
 
-    tft.drawString("DREHZAHL", 160, 160, 1);
-    snprintf(buf, sizeof(buf), "%d", data.ecuRpm);
-    tft.drawString(buf, 160, 172, 4);
+    // Batteriespannung
+    snprintf(buf, sizeof(buf), "%.1f V", data.batteryVolt);
+    tft.drawString(buf, 160, 208, 1);
 }
 
 // ==============================================================================
-// DESIGN-STUDIE 4: TUNER & DIAGNOSTICS MATRIX (8 TELEMETRIE-WERTE)
+// THEME 4: MONITOR MATRIX (STATUS-LEISTEN MIT ALARMGRENZEN)
 // ==============================================================================
-void DisplayUI::drawStatBox(int x, int y, int w, int h, const char *label, const char *valStr, const char *unit, uint16_t valColor) {
-    tft.drawRoundRect(x, y, w, h, 3, COLOR_GRID_BORDER);
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tft.drawString(label, x + 5, y + 4, 1);
+void DisplayUI::renderMonitorMatrix(const SensorData &data) {
+    char label[16], val[16];
+    int y0 = 6;
+    int rowH = 34;
 
-    tft.setTextDatum(TR_DATUM);
-    tft.setTextColor(valColor, TFT_BLACK);
-    tft.drawString(valStr, x + w - 5, y + 18, 4);
+    struct ParamRow {
+        const char *name;
+        float value;
+        float minV;
+        float maxV;
+        const char *unit;
+        uint16_t col;
+        bool alarm;
+    };
 
-    tft.setTextDatum(BR_DATUM);
+    ParamRow rows[6] = {
+        { "OELDRUCK",   data.oilPressureBar, 0.0f,  7.0f,  "bar", COLOR_ACCENT_GREEN,  data.alarmOilPressure },
+        { "OELTEMP",    data.oilTemp,       40.0f, 140.0f, "C",   (data.oilTemp < 75 ? COLOR_COLD_BLUE : COLOR_ACCENT_GREEN), data.alarmOilTemp },
+        { "WASSER",     data.coolantTemp,   40.0f, 120.0f, "C",   TFT_CYAN,            data.alarmCoolant },
+        { "LADELUFT",   data.chargeAirTemp, 10.0f,  70.0f, "C",   COLOR_ACCENT_GREEN,  data.alarmChargeAir },
+        { "ABGAS EGT",  data.exhaustTemp,  300.0f, 1050.0f,"C",   COLOR_ACCENT_ORANGE, data.alarmEgt },
+        { "LADEDRUCK",  data.boostBar,      -1.0f,  2.0f,  "bar", COLOR_ACCENT_CYAN,   data.alarmBoost }
+    };
+
+    for (int i = 0; i < 6; i++) {
+        int y = y0 + i * rowH;
+
+        // Label
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        tft.drawString(rows[i].name, 8, y + 2, 1);
+
+        // Wert
+        tft.setTextDatum(TR_DATUM);
+        uint16_t c = rows[i].alarm ? TFT_RED : rows[i].col;
+        tft.setTextColor(c, TFT_BLACK);
+        if (rows[i].maxV <= 3.0f || rows[i].maxV >= 100.0f) {
+            snprintf(val, sizeof(val), "%.1f %s", rows[i].value, rows[i].unit);
+        } else {
+            snprintf(val, sizeof(val), "%.2f %s", rows[i].value, rows[i].unit);
+        }
+        tft.drawString(val, 312, y + 2, 2);
+
+        // Statusbalken
+        drawHorizontalBar(8, y + 20, 304, 8, rows[i].value, rows[i].minV, rows[i].maxV, c);
+    }
+
+    // Fußzeile
+    tft.setTextDatum(ML_DATUM);
     tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.drawString(unit, x + w - 5, y + h - 3, 1);
-}
-
-void DisplayUI::renderDataMatrix(const SensorData &data) {
-    char buf[16];
-
-    // 8 Kacheln: 2 Spalten à 4 Zeilen
-    int boxW = 152;
-    int boxH = 52;
-    int xLeft = 6;
-    int xRight = 162;
-
-    // Zeile 1
-    dtostrf(data.boostBar, 4, 2, buf);
-    drawStatBox(xLeft, 6, boxW, boxH, "LADEDRUCK", buf, "bar", (data.alarmBoost ? TFT_RED : COLOR_ACCENT_CYAN));
-
-    snprintf(buf, sizeof(buf), "%.2f", data.boostPeakBar);
-    drawStatBox(xRight, 6, boxW, boxH, "BOOST PEAK", buf, "bar", TFT_WHITE);
-
-    // Zeile 2
-    snprintf(buf, sizeof(buf), "%d", (int)data.exhaustTemp);
-    drawStatBox(xLeft, 64, boxW, boxH, "ABGASTEMP (EGT)", buf, "deg C", (data.alarmEgt ? TFT_RED : COLOR_ACCENT_ORANGE));
-
-    snprintf(buf, sizeof(buf), "%.1f", data.chargeAirTemp);
-    drawStatBox(xRight, 64, boxW, boxH, "LADELUFT (LLK)", buf, "deg C", (data.alarmChargeAir ? TFT_RED : COLOR_ACCENT_GREEN));
-
-    // Zeile 3
-    snprintf(buf, sizeof(buf), "%.1f", data.ecuMafGs);
-    drawStatBox(xLeft, 122, boxW, boxH, "LUFTMASSE (MAF)", buf, "g/s", TFT_YELLOW);
-
-    snprintf(buf, sizeof(buf), "%.0f", data.ecuEngineLoadPct);
-    drawStatBox(xRight, 122, boxW, boxH, "MOTORLAST", buf, "%", TFT_WHITE);
-
-    // Zeile 4
-    snprintf(buf, sizeof(buf), "%.1f", data.ecuIgnitionAngle);
-    drawStatBox(xLeft, 180, boxW, boxH, "ZUENDWINKEL", buf, "deg KW", COLOR_ACCENT_CYAN);
-
-    snprintf(buf, sizeof(buf), "%.1f", data.ecuBatteryVolt);
-    drawStatBox(xRight, 180, boxW, boxH, "BORDSPANNUNG", buf, "Volt", TFT_WHITE);
+    snprintf(val, sizeof(val), "BATT: %.1fV | PEAK BOOST: %.2f bar", data.batteryVolt, data.boostPeakBar);
+    tft.drawString(val, 8, 225, 1);
 }

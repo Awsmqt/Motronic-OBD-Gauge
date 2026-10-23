@@ -15,11 +15,14 @@ private:
     Adafruit_MAX31855* thermocouple;
     float baroBaselineBar;
     float filteredBoostBar;
+    float filteredOilPressureBar;
     float filteredChargeAirTemp;
+    float filteredOilTemp;
     bool  sensorInitOk;
 
     float readMapSensorPressure();
-    float readChargeAirTemp();
+    float readOilPressure();
+    float readNtcTemperature(int pin);
     float readEgtCelsius();
     float getCorrectedAdcVoltage(int pin);
 };

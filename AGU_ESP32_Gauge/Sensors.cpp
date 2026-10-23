@@ -5,29 +5,32 @@ SensorManager::SensorManager()
     : thermocouple(nullptr),
       baroBaselineBar(MAP_BARO_DEFAULT),
       filteredBoostBar(0.0f),
+      filteredOilPressureBar(0.0f),
       filteredChargeAirTemp(20.0f),
+      filteredOilTemp(20.0f),
       sensorInitOk(false) {
 }
 
 void SensorManager::begin() {
-    // ADC Pins konfigurieren (12-Bit Auflösung: 0 - 4095)
     analogReadResolution(12);
-    analogSetAttenuation(ADC_11db); // Full range ca. 0 - 3.1V bis 3.3V
+    analogSetAttenuation(ADC_11db);
+
+    // Alle 4 analogen Sensoren (ADC1 Pins 34, 35, 36, 39)
     pinMode(PIN_MAP_SENSOR, INPUT);
     pinMode(PIN_CHARGE_AIR_NTC, INPUT);
+    pinMode(PIN_OIL_PRESSURE, INPUT);
+    pinMode(PIN_OIL_TEMP, INPUT);
 
     // MAX31855 Thermoelement-Verstärker (SPI)
     thermocouple = new Adafruit_MAX31855(PIN_EGT_CLK, PIN_EGT_CS, PIN_EGT_DO);
     if (thermocouple->begin()) {
         sensorInitOk = true;
-        Serial.println("[Sensors] MAX31855 EGT Sensor erfolgreich initialisiert.");
+        Serial.println("[Sensors] MAX31855 EGT Sensor bereit.");
     } else {
-        Serial.println("[Sensors] WARNUNG: MAX31855 nicht erkannt oder Leitungsunterbrechung!");
+        Serial.println("[Sensors] WARNUNG: MAX31855 nicht erkannt!");
     }
 
-    // Auto-Zeroing / Barometer Kalibrierung:
-    // Beim Einschalten der Zündung (Motor noch aus) entspricht der Druck im Saugrohr
-    // exakt dem Umgebungsdruck. Dies nutzen wir für präzisen 0.00 bar Relativ-Nullpunkt!
+    // Auto-Zeroing / Barometer Kalibrierung für Ladedruck
     float sumBaro = 0;
     int samples = 20;
     for (int i = 0; i < samples; i++) {
@@ -35,109 +38,116 @@ void SensorManager::begin() {
         delay(10);
     }
     float initialBaro = sumBaro / (float)samples;
-    // Plausibilitätsprüfung: Meereshöhe ca. 0.85 bis 1.05 bar absolut
     if (initialBaro >= 0.70f && initialBaro <= 1.15f) {
         baroBaselineBar = initialBaro;
-        Serial.printf("[Sensors] Barometrischer Nullpunkt kalibriert: %.3f bar abs.\n", baroBaselineBar);
+        Serial.printf("[Sensors] Baro Nullpunkt kalibriert: %.3f bar abs.\n", baroBaselineBar);
     } else {
         baroBaselineBar = MAP_BARO_DEFAULT;
-        Serial.printf("[Sensors] MAP-Sensor unplausibel (%.3f bar) - Fallback auf Standard %.3f bar.\n", initialBaro, baroBaselineBar);
     }
 }
 
 float SensorManager::getCorrectedAdcVoltage(int pin) {
-    // 16-faches Oversampling zur Rauschunterdrückung
     uint32_t adcSum = 0;
     for (int i = 0; i < 16; i++) {
         adcSum += analogRead(pin);
     }
     float rawAdc = (float)adcSum / 16.0f;
-
-    // ESP32 ADC Kennlinien-Kompensation (nicht-linearer Bereich unter 0.15V und über 3.0V)
-    // Einfache Polynom-Annäherung für 3.3V Referenz:
-    float vPin = (rawAdc / 4095.0f) * 3.30f;
-    return vPin;
+    return (rawAdc / 4095.0f) * 3.30f;
 }
 
 float SensorManager::readMapSensorPressure() {
     float vPin = getCorrectedAdcVoltage(PIN_MAP_SENSOR);
-    
-    // Durch den Spannungsteiler geteilte Sensorspannung rekonstruieren (V_Sensor = V_Pin / Teiler)
     float vSensor = vPin / MAP_DIVIDER_RATIO;
     if (vSensor < 0.1f) vSensor = 0.1f;
     if (vSensor > 5.0f) vSensor = 5.0f;
 
-    // Lineare Kennlinie des Bosch 3-Bar Sensors:
-    // P = P_min + (V - V_min) * (P_max - P_min) / (V_max - V_min)
+    // Lineare Kennlinie Bosch 3-Bar:
     float absPressure = MAP_P_MIN_BAR + ((vSensor - MAP_V_MIN) / (MAP_V_MAX - MAP_V_MIN)) * (MAP_P_MAX_BAR - MAP_P_MIN_BAR);
     return absPressure;
 }
 
-float SensorManager::readChargeAirTemp() {
-    float vPin = getCorrectedAdcVoltage(PIN_CHARGE_AIR_NTC);
+float SensorManager::readOilPressure() {
+    float vPin = getCorrectedAdcVoltage(PIN_OIL_PRESSURE);
+    float vSensor = vPin / OIL_PRESS_DIVIDER;
+    if (vSensor < 0.1f) vSensor = 0.1f;
+    if (vSensor > 5.0f) vSensor = 5.0f;
+
+    // Lineare Kennlinie 0-10 bar Geber (0.5V = 0 bar, 4.5V = 10 bar)
+    float press = ((vSensor - OIL_PRESS_V_MIN) / (OIL_PRESS_V_MAX - OIL_PRESS_V_MIN)) * OIL_PRESS_MAX_BAR;
+    if (press < 0.0f) press = 0.0f;
+    if (press > 10.0f) press = 10.0f;
+    return press;
+}
+
+float SensorManager::readNtcTemperature(int pin) {
+    float vPin = getCorrectedAdcVoltage(pin);
     if (vPin <= 0.05f || vPin >= 3.25f) {
-        // Sensor nicht angeschlossen oder Kurzschluss
-        return -99.0f;
+        return -99.0f; // Sensor nicht verbunden
     }
 
-    // NTC Spannungsteiler: Pullup an 3.3V, NTC gegen Masse
-    // V_Pin = 3.3V * (R_NTC / (R_Pullup + R_NTC)) => R_NTC = R_Pullup * V_Pin / (3.3 - V_Pin)
+    // NTC Widerstand aus Spannungsteiler
     float rNtc = NTC_PULLUP_RESISTOR * (vPin / (3.30f - vPin));
 
-    // Steinhart-Hart / Beta Gleichung:
-    // 1/T = 1/T0 + (1/Beta) * ln(R / R0)
+    // Steinhart-Hart / Beta Gleichung
     float steinhart = rNtc / NTC_NOMINAL_RESISTANCE;
     steinhart = log(steinhart);
     steinhart /= NTC_BETA_COEFFICIENT;
     steinhart += 1.0f / (NTC_NOMINAL_TEMP + 273.15f);
     steinhart = 1.0f / steinhart;
-    float tempCelsius = steinhart - 273.15f;
-
-    return tempCelsius;
+    return (steinhart - 273.15f);
 }
 
 float SensorManager::readEgtCelsius() {
     if (!thermocouple) return 0.0f;
-    
     float c = thermocouple->readCelsius();
-    if (isnan(c)) {
-        uint8_t error = thermocouple->readError();
-        if (error & MAX31855_FAULT_OPEN) {
-            // Leitungsunterbrechung am Thermoelement
-        }
-        return -1.0f; // Fehlercode
-    }
-    return c;
+    return isnan(c) ? -1.0f : c;
 }
 
 void SensorManager::update(SensorData &data) {
-    // 1. Ladedruck ermitteln & filtern
+    // 1. DRÜCKE (Ladedruck & Öldruck)
     float absPressure = readMapSensorPressure();
     float rawRelativeBoost = absPressure - baroBaselineBar;
-    
-    // Begrenzung auf physikalisch sinnvolle Werte (-1.0 bar bis +3.0 bar)
     if (rawRelativeBoost < -1.0f) rawRelativeBoost = -1.0f;
-    
-    // Exponential Moving Average
-    filteredBoostBar = (FILTER_ALPHA_BOOST * rawRelativeBoost) + ((1.0f - FILTER_ALPHA_BOOST) * filteredBoostBar);
-    data.boostBar = filteredBoostBar;
-    data.rawMapVoltage = getCorrectedAdcVoltage(PIN_MAP_SENSOR) / MAP_DIVIDER_RATIO;
 
+    filteredBoostBar = (FILTER_ALPHA_PRESS * rawRelativeBoost) + ((1.0f - FILTER_ALPHA_PRESS) * filteredBoostBar);
+    data.boostBar = filteredBoostBar;
     if (data.boostBar > data.boostPeakBar) {
         data.boostPeakBar = data.boostBar;
     }
 
-    // 2. Ladelufttemperatur ermitteln & filtern
-    float rawIat = readChargeAirTemp();
+    float rawOilPress = readOilPressure();
+    filteredOilPressureBar = (FILTER_ALPHA_PRESS * rawOilPress) + ((1.0f - FILTER_ALPHA_PRESS) * filteredOilPressureBar);
+    data.oilPressureBar = filteredOilPressureBar;
+
+    // Minimaler Öldruck bei warmem Motor erfassen
+    if (data.oilTemp > 80.0f) {
+        if (data.oilPressureMinBar <= 0.0f || data.oilPressureBar < data.oilPressureMinBar) {
+            data.oilPressureMinBar = data.oilPressureBar;
+        }
+    }
+
+    // 2. TEMPERATUREN
+    // Ladeluft nach LLK
+    float rawIat = readNtcTemperature(PIN_CHARGE_AIR_NTC);
     if (rawIat > -50.0f && rawIat < 150.0f) {
         filteredChargeAirTemp = (FILTER_ALPHA_TEMP * rawIat) + ((1.0f - FILTER_ALPHA_TEMP) * filteredChargeAirTemp);
         data.chargeAirTemp = filteredChargeAirTemp;
     } else {
-        // Fallback: Falls kein externer NTC verbaut ist, IAT aus Motronic ECU verwenden
+        // Fallback: OBD Ansaugluft
         data.chargeAirTemp = data.ecuIntakeAirTemp;
     }
 
-    // 3. EGT Abgastemperatur lesen
+    // Öltemperatur
+    float rawOilTemp = readNtcTemperature(PIN_OIL_TEMP);
+    if (rawOilTemp > -40.0f && rawOilTemp < 180.0f) {
+        filteredOilTemp = (FILTER_ALPHA_TEMP * rawOilTemp) + ((1.0f - FILTER_ALPHA_TEMP) * filteredOilTemp);
+        data.oilTemp = filteredOilTemp;
+        if (data.oilTemp > data.oilTempPeak) {
+            data.oilTempPeak = data.oilTemp;
+        }
+    }
+
+    // EGT
     float egt = readEgtCelsius();
     if (egt >= 0.0f) {
         data.exhaustTemp = egt;
@@ -146,14 +156,19 @@ void SensorManager::update(SensorData &data) {
         }
     }
 
-    // 4. Alarme evaluieren
+    // 3. ALARME PRÜFEN
+    data.alarmOilPressure = (data.oilPressureBar < ALARM_OIL_PRESS_MIN_WARN);
+    data.alarmOilTemp = (data.oilTemp >= ALARM_OIL_TEMP_WARN);
+    data.alarmCoolant = (data.coolantTemp >= ALARM_COOLANT_HIGH);
+    data.alarmChargeAir = (data.chargeAirTemp >= ALARM_IAT_HIGH);
     data.alarmEgt = (data.exhaustTemp >= ALARM_EGT_WARN);
     data.alarmBoost = (data.boostBar >= ALARM_BOOST_OVERBOOST);
-    data.alarmCoolant = (data.ecuCoolantTemp >= ALARM_COOLANT_HIGH);
-    data.alarmChargeAir = (data.chargeAirTemp >= ALARM_IAT_HIGH);
+    data.alarmBattery = (data.batteryVolt < ALARM_BATTERY_LOW || data.batteryVolt > ALARM_BATTERY_HIGH);
 }
 
 void SensorManager::resetPeaks(SensorData &data) {
     data.boostPeakBar = data.boostBar;
     data.exhaustTempPeak = data.exhaustTemp;
+    data.oilTempPeak = data.oilTemp;
+    data.oilPressureMinBar = data.oilPressureBar;
 }

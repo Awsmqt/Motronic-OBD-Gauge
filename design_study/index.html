@@ -1,9 +1,8 @@
-<!-- Kopie der interaktiven Design-Studie im Repository -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>VW 1.8T (AGU) OBD Display - Design Studien & Simulator</title>
+  <title>VW 1.8T (AGU) Motor-Zustand Monitor - Design Studien</title>
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
   <style>
     @font-face {
@@ -27,84 +26,122 @@
 
   <div class="max-w-4xl w-full mb-6 text-center">
     <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-400 mb-3">
-      <span>🚗 VW 1.8T AGU (Motronic M3.8.3)</span>
+      <span>🩺 Motor-Betriebszustand & Vitaldaten</span>
       <span>•</span>
-      <span>ESP32 CYD (320x240 TFT)</span>
+      <span>Drücke (Öl/Ladedruck) • Temperaturen (Öl/Wasser/LLK/EGT) • Elektrik</span>
     </div>
-    <h1 class="text-2xl font-bold tracking-tight">Display-Design Studien & Interaktive Testumgebung</h1>
+    <h1 class="text-2xl font-bold tracking-tight">Motor-Zustands-Monitor (ESP32 CYD)</h1>
     <p class="text-zinc-400 text-sm mt-1">
-      Wähle zwischen den 4 Layout-Konzepten und teste die Sensor-Reaktion, Ladeluft-Erwärmung und Alarmschwellen live.
+      Fokus auf die Gesundheit und Belastung des Motors – ohne unnötige Drehzahlanzeigen.
     </p>
   </div>
 
   <div class="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
+
     <div class="lg:col-span-2 flex flex-col items-center">
       <div class="p-4 bg-zinc-900 border-4 border-zinc-700 rounded-2xl shadow-2xl relative">
         <div class="text-[12px] font-mono text-zinc-500 mb-2 flex justify-between items-center px-1">
-          <span>ESP32-2432S028 (CYD 2.8" TFT)</span>
-          <span id="fps-badge" class="text-emerald-400">● 20 FPS (Smooth)</span>
+          <span>ESP32 CYD (320x240 TFT)</span>
+          <span id="fps-badge" class="text-emerald-400">● 20 FPS Active</span>
         </div>
+
         <div id="screen" class="lcd-screen relative transition-colors duration-300">
           <canvas id="displayCanvas" width="640" height="480" class="w-full h-full block"></canvas>
         </div>
+
         <div class="mt-2 text-center text-xs text-zinc-500">
-          💡 <em>Klicke auf das Display, um direkt das nächste Design-Theme aufzurufen!</em>
+          💡 <em>Klicke auf das Display, um direkt zwischen den 4 Design-Themen zu wechseln!</em>
         </div>
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full mt-4">
         <button onclick="setTheme(0)" id="btn-theme-0" class="theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-cyan-500 bg-cyan-600 text-white shadow-sm transition">
-          1. Classic Quad
+          1. Health Grid
         </button>
         <button onclick="setTheme(1)" id="btn-theme-1" class="theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition">
-          2. Sport Cluster
+          2. Pressure & Temp
         </button>
         <button onclick="setTheme(2)" id="btn-theme-2" class="theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition">
-          3. OEM+ Golf 4
+          3. OEM+ VDO
         </button>
         <button onclick="setTheme(3)" id="btn-theme-3" class="theme-btn px-3 py-2 text-xs font-medium rounded-lg border border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition">
-          4. Data Matrix
+          4. Monitor Matrix
         </button>
       </div>
     </div>
 
     <div class="flex flex-col gap-4">
+
       <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 shadow-sm">
         <h3 class="text-sm font-semibold mb-3 flex items-center justify-between">
-          <span>⚡ Fahrzustands-Presets</span>
+          <span>⚡ Motor-Betriebsphasen</span>
           <button onclick="toggleAutoSim()" id="btn-auto-sim" class="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
             Auto: AN
           </button>
         </h3>
         <div class="grid grid-cols-2 gap-2 text-xs">
-          <button onclick="applyPreset('idle')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800/60 transition">
-            <span class="font-bold block">1. Standgas</span>
-            <span class="text-zinc-400">840 RPM | -0.68 bar</span>
+          <button onclick="applyPreset('cold')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800 transition">
+            <span class="font-bold block text-blue-400">1. Kaltstart</span>
+            <span class="text-zinc-400">Öl 4.6 bar | 45°C</span>
           </button>
-          <button onclick="applyPreset('cruising')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800/60 transition">
-            <span class="font-bold block">2. Cruisen</span>
-            <span class="text-zinc-400">2400 RPM | -0.2 bar</span>
+          <button onclick="applyPreset('warm_idle')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800 transition">
+            <span class="font-bold block text-emerald-400">2. Warmer Leerlauf</span>
+            <span class="text-zinc-400">Öl 1.6 bar | 92°C</span>
           </button>
-          <button onclick="applyPreset('wot')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800/60 transition">
-            <span class="font-bold block">3. Volllast (WOT)</span>
-            <span class="text-zinc-400">5800 RPM | 1.35 bar</span>
+          <button onclick="applyPreset('boost_pull')" class="p-2 text-left rounded-lg border border-zinc-800 hover:bg-zinc-800 transition">
+            <span class="font-bold block text-cyan-400">3. Volllast-Sprint</span>
+            <span class="text-zinc-400">1.35 bar | 4.8 bar</span>
           </button>
-          <button onclick="applyPreset('alarm')" class="p-2 text-left rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition">
-            <span class="font-bold block">4. Overboost / EGT</span>
-            <span class="text-red-300">1.50 bar | 955°C</span>
+          <button onclick="applyPreset('warning')" class="p-2 text-left rounded-lg border border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition">
+            <span class="font-bold block">4. Warnung / Hitze</span>
+            <span class="text-red-300">Öl 0.9 bar | 126°C</span>
           </button>
         </div>
       </div>
 
       <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-4 shadow-sm text-xs flex flex-col gap-3">
-        <h3 class="font-semibold text-sm">🎛 Manuelle Sensorsteuerung</h3>
+        <h3 class="font-semibold text-sm">🎛 Manuelle Parameter-Steuerung</h3>
+
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Öldruck:</span>
+            <span id="val-oil-press" class="text-emerald-400 font-bold">3.8 bar</span>
+          </div>
+          <input type="range" id="slider-oil-press" min="0.0" max="7.0" step="0.1" value="3.8" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Öltemperatur:</span>
+            <span id="val-oil-temp" class="text-emerald-400 font-bold">94 °C</span>
+          </div>
+          <input type="range" id="slider-oil-temp" min="30" max="150" step="1" value="94" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Kühlwasser:</span>
+            <span id="val-coolant" class="text-white font-bold">90 °C</span>
+          </div>
+          <input type="range" id="slider-coolant" min="40" max="120" step="1" value="90" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+
+        <div>
+          <div class="flex justify-between font-mono mb-1">
+            <span>Ladeluft (LLK IAT):</span>
+            <span id="val-iat" class="text-emerald-400 font-bold">32.0 °C</span>
+          </div>
+          <input type="range" id="slider-iat" min="10" max="75" step="0.5" value="32.0" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+
         <div>
           <div class="flex justify-between font-mono mb-1">
             <span>Ladedruck:</span>
-            <span id="val-boost" class="text-cyan-400 font-bold">1.25 bar</span>
+            <span id="val-boost" class="text-cyan-400 font-bold">+1.25 bar</span>
           </div>
           <input type="range" id="slider-boost" min="-1.0" max="2.0" step="0.05" value="1.25" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
         </div>
+
         <div>
           <div class="flex justify-between font-mono mb-1">
             <span>Abgastemp (EGT):</span>
@@ -112,28 +149,17 @@
           </div>
           <input type="range" id="slider-egt" min="300" max="1050" step="10" value="840" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
         </div>
+
         <div>
           <div class="flex justify-between font-mono mb-1">
-            <span>Ladeluft (LLK IAT):</span>
-            <span id="val-iat" class="text-emerald-400 font-bold">34.5 °C</span>
+            <span>Bordspannung:</span>
+            <span id="val-batt" class="text-white font-bold">13.8 V</span>
           </div>
-          <input type="range" id="slider-iat" min="15" max="85" step="0.5" value="34.5" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
+          <input type="range" id="slider-batt" min="10.5" max="15.5" step="0.1" value="13.8" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
         </div>
-        <div>
-          <div class="flex justify-between font-mono mb-1">
-            <span>Drehzahl:</span>
-            <span id="val-rpm" class="text-white font-bold">4200 RPM</span>
-          </div>
-          <input type="range" id="slider-rpm" min="800" max="7000" step="100" value="4200" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
-        </div>
-        <div>
-          <div class="flex justify-between font-mono mb-1">
-            <span>Kühlwasser:</span>
-            <span id="val-coolant" class="text-blue-400 font-bold">90 °C</span>
-          </div>
-          <input type="range" id="slider-coolant" min="50" max="120" step="1" value="90" oninput="onManualInput()" class="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer">
-        </div>
+
       </div>
+
     </div>
   </div>
 
@@ -145,14 +171,14 @@
       theme: 0,
       boost: 1.25,
       boostPeak: 1.38,
-      egt: 845,
+      oilPress: 3.8,
+      oilPressMin: 1.5,
+      oilTemp: 94.0,
+      oilTempPeak: 98.0,
+      coolant: 90.0,
+      iat: 32.0,
+      egt: 840,
       egtPeak: 890,
-      iat: 34.5,
-      rpm: 4200,
-      coolant: 90,
-      maf: 115.0,
-      load: 85,
-      ignition: 18.0,
       battery: 13.8,
       autoSim: true,
       simTime: 0
@@ -187,13 +213,17 @@
       state.autoSim = false;
       document.getElementById('btn-auto-sim').innerText = "Auto: AUS";
       document.getElementById('btn-auto-sim').className = "text-xs px-2 py-0.5 rounded bg-zinc-700 text-zinc-300 font-mono";
+
+      state.oilPress = parseFloat(document.getElementById('slider-oil-press').value);
+      state.oilTemp = parseFloat(document.getElementById('slider-oil-temp').value);
+      state.coolant = parseFloat(document.getElementById('slider-coolant').value);
+      state.iat = parseFloat(document.getElementById('slider-iat').value);
       state.boost = parseFloat(document.getElementById('slider-boost').value);
       state.egt = parseInt(document.getElementById('slider-egt').value);
-      state.iat = parseFloat(document.getElementById('slider-iat').value);
-      state.rpm = parseInt(document.getElementById('slider-rpm').value);
-      state.coolant = parseInt(document.getElementById('slider-coolant').value);
+      state.battery = parseFloat(document.getElementById('slider-batt').value);
 
       if (state.boost > state.boostPeak) state.boostPeak = state.boost;
+      if (state.oilTemp > state.oilTempPeak) state.oilTempPeak = state.oilTemp;
       if (state.egt > state.egtPeak) state.egtPeak = state.egt;
       updateUiLabels();
     }
@@ -203,238 +233,268 @@
       document.getElementById('btn-auto-sim').innerText = "Auto: AUS";
       document.getElementById('btn-auto-sim').className = "text-xs px-2 py-0.5 rounded bg-zinc-700 text-zinc-300 font-mono";
 
-      if (p === 'idle') {
-        state.boost = -0.68; state.egt = 420; state.iat = 24.0; state.rpm = 840; state.coolant = 89; state.load = 16; state.maf = 2.8;
-      } else if (p === 'cruising') {
-        state.boost = -0.25; state.egt = 590; state.iat = 28.0; state.rpm = 2400; state.coolant = 90; state.load = 38; state.maf = 26.0;
-      } else if (p === 'wot') {
-        state.boost = 1.35; state.egt = 880; state.iat = 42.0; state.rpm = 5800; state.coolant = 92; state.load = 145; state.maf = 155.0;
-      } else if (p === 'alarm') {
-        state.boost = 1.52; state.egt = 955; state.iat = 65.0; state.rpm = 6400; state.coolant = 108; state.load = 160; state.maf = 175.0;
+      if (p === 'cold') {
+        state.boost = -0.65;
+        state.oilPress = 4.6;
+        state.oilTemp = 45.0;
+        state.coolant = 65.0;
+        state.iat = 20.0;
+        state.egt = 390;
+        state.battery = 14.3;
+      } else if (p === 'warm_idle') {
+        state.boost = -0.68;
+        state.oilPress = 1.6;
+        state.oilTemp = 92.0;
+        state.coolant = 90.0;
+        state.iat = 28.0;
+        state.egt = 450;
+        state.battery = 13.8;
+      } else if (p === 'boost_pull') {
+        state.boost = 1.35;
+        state.oilPress = 4.8;
+        state.oilTemp = 104.0;
+        state.coolant = 92.0;
+        state.iat = 42.0;
+        state.egt = 880;
+        state.battery = 13.9;
+      } else if (p === 'warning') {
+        state.boost = 1.50;
+        state.oilPress = 0.9;
+        state.oilTemp = 128.0;
+        state.coolant = 108.0;
+        state.iat = 62.0;
+        state.egt = 960;
+        state.battery = 11.8;
       }
 
       if (state.boost > state.boostPeak) state.boostPeak = state.boost;
+      if (state.oilTemp > state.oilTempPeak) state.oilTempPeak = state.oilTemp;
       if (state.egt > state.egtPeak) state.egtPeak = state.egt;
 
+      document.getElementById('slider-oil-press').value = state.oilPress;
+      document.getElementById('slider-oil-temp').value = state.oilTemp;
+      document.getElementById('slider-coolant').value = state.coolant;
+      document.getElementById('slider-iat').value = state.iat;
       document.getElementById('slider-boost').value = state.boost;
       document.getElementById('slider-egt').value = state.egt;
-      document.getElementById('slider-iat').value = state.iat;
-      document.getElementById('slider-rpm').value = state.rpm;
-      document.getElementById('slider-coolant').value = state.coolant;
+      document.getElementById('slider-batt').value = state.battery;
       updateUiLabels();
     }
 
     function updateUiLabels() {
+      document.getElementById('val-oil-press').innerText = `${state.oilPress.toFixed(1)} bar`;
+      document.getElementById('val-oil-temp').innerText = `${state.oilTemp.toFixed(0)} °C`;
+      document.getElementById('val-coolant').innerText = `${state.coolant.toFixed(0)} °C`;
+      document.getElementById('val-iat').innerText = `${state.iat.toFixed(1)} °C`;
       document.getElementById('val-boost').innerText = `${state.boost >= 0 ? '+' : ''}${state.boost.toFixed(2)} bar`;
       document.getElementById('val-egt').innerText = `${Math.round(state.egt)} °C`;
-      document.getElementById('val-iat').innerText = `${state.iat.toFixed(1)} °C`;
-      document.getElementById('val-rpm').innerText = `${Math.round(state.rpm)} RPM`;
-      document.getElementById('val-coolant').innerText = `${Math.round(state.coolant)} °C`;
+      document.getElementById('val-batt').innerText = `${state.battery.toFixed(1)} V`;
     }
 
     function render() {
       if (state.autoSim) {
         state.simTime += 0.03;
         const s = Math.sin(state.simTime * 0.8);
+
         if (s > 0.2) {
-          state.rpm = 2500 + (s * 3800);
-          state.boost = -0.2 + (s * 1.55);
-          state.egt = 650 + (s * 260);
-          state.iat = 28 + (s * 20);
+          state.boost = -0.1 + (s * 1.45);
+          state.oilPress = 3.8 + (s * 1.1);
+          state.oilTemp = 94 + (s * 14);
+          state.coolant = 90 + (s * 2.5);
+          state.iat = 28 + (s * 16);
+          state.egt = 650 + (s * 240);
         } else {
-          state.rpm = 1200 + (Math.abs(s) * 1200);
-          state.boost = -0.75 + (Math.abs(s) * 0.4);
-          state.egt = 480 + (Math.abs(s) * 100);
-          state.iat = 24 + (Math.abs(s) * 6);
+          state.boost = -0.72 + (Math.abs(s) * 0.35);
+          state.oilPress = 1.6 + (Math.abs(s) * 1.5);
+          state.oilTemp = 90 + (Math.abs(s) * 4);
+          state.coolant = 89 + (Math.abs(s) * 2);
+          state.iat = 24 + (Math.abs(s) * 5);
+          state.egt = 440 + (Math.abs(s) * 120);
         }
 
         if (state.boost > state.boostPeak) state.boostPeak = state.boost;
+        if (state.oilTemp > state.oilTempPeak) state.oilTempPeak = state.oilTemp;
         if (state.egt > state.egtPeak) state.egtPeak = state.egt;
 
+        document.getElementById('slider-oil-press').value = state.oilPress;
+        document.getElementById('slider-oil-temp').value = state.oilTemp;
+        document.getElementById('slider-coolant').value = state.coolant;
+        document.getElementById('slider-iat').value = state.iat;
         document.getElementById('slider-boost').value = state.boost;
         document.getElementById('slider-egt').value = state.egt;
-        document.getElementById('slider-iat').value = state.iat;
-        document.getElementById('slider-rpm').value = state.rpm;
         updateUiLabels();
       }
 
       ctx.save();
-      if (state.theme === 0) renderThemeClassicQuad();
-      else if (state.theme === 1) renderThemeSportCluster();
-      else if (state.theme === 2) renderThemeOemPlus();
-      else if (state.theme === 3) renderThemeDataMatrix();
-
+      if (state.theme === 0) renderThemeHealthGrid();
+      else if (state.theme === 1) renderThemePressureTemp();
+      else if (state.theme === 2) renderThemeOemVdo();
+      else if (state.theme === 3) renderThemeMonitorMatrix();
       ctx.restore();
+
       requestAnimationFrame(render);
     }
 
-    function renderThemeClassicQuad() {
+    function renderThemeHealthGrid() {
+      ctx.fillStyle = '#06080e';
+      ctx.fillRect(0, 0, 640, 480);
+
+      ctx.strokeStyle = '#1e2634';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 136); ctx.lineTo(640, 136);
+      ctx.moveTo(0, 276); ctx.lineTo(640, 276);
+      ctx.moveTo(0, 416); ctx.lineTo(640, 416);
+      ctx.moveTo(320, 0); ctx.lineTo(320, 416);
+      ctx.stroke();
+
+      let bCol = state.boost >= 1.45 ? '#ff2244' : (state.boost < 0 ? '#ffffff' : '#00f0ff');
+      drawTile(0, 0, 320, 136, 'LADEDRUCK', (state.boost >= 0 ? '+' : '') + state.boost.toFixed(2), 'bar', `Peak: ${state.boostPeak.toFixed(2)} bar`, bCol);
+
+      let opCol = state.oilPress < 1.2 ? '#ff2244' : (state.oilPress < 2.0 ? '#ffcc00' : '#00ff88');
+      drawTile(320, 0, 320, 136, 'OELDRUCK', state.oilPress.toFixed(1), 'bar', `Min: ${state.oilPressMin.toFixed(1)} bar`, opCol);
+
+      let otCol = state.oilTemp < 75 ? '#3399ff' : (state.oilTemp > 125 ? '#ff2244' : (state.oilTemp > 115 ? '#ffcc00' : '#00ff88'));
+      drawTile(0, 136, 320, 140, 'OELTEMPERATUR', state.oilTemp.toFixed(0), '°C', `Max: ${state.oilTempPeak.toFixed(0)} °C`, otCol);
+
+      let cwCol = state.coolant > 103 ? '#ff2244' : (state.coolant > 98 ? '#ffcc00' : '#ffffff');
+      drawTile(320, 136, 320, 140, 'KUEHLWASSER', state.coolant.toFixed(0), '°C', 'Soll: 90 °C', cwCol);
+
+      let iatCol = state.iat > 55 ? '#ff2244' : (state.iat > 45 ? '#ffcc00' : '#00ff88');
+      drawTile(0, 276, 320, 140, 'LADELUFT (LLK)', state.iat.toFixed(1), '°C', `IAT MAF: ${(state.iat - 2).toFixed(0)} °C`, iatCol);
+
+      let egtCol = state.egt > 950 ? '#ff2244' : (state.egt > 900 ? '#ffd000' : '#ff9900');
+      drawTile(320, 276, 320, 140, 'ABGASTEMPERATUR', `${Math.round(state.egt)}`, '°C EGT', `Max: ${Math.round(state.egtPeak)} °C`, egtCol);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = state.battery < 12.0 ? '#ff2244' : '#8899aa';
+      ctx.font = '600 20px monospace';
+      ctx.fillText(`BORDSPANNUNG: ${state.battery.toFixed(1)} V`, 24, 452);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#00ff88';
+      ctx.font = '600 18px sans-serif';
+      ctx.fillText('ECU K-LINE: ONLINE', 616, 452);
+    }
+
+    function drawTile(x, y, w, h, label, val, unit, sub, col) {
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#8392a8';
+      ctx.font = '600 18px sans-serif';
+      ctx.fillText(label, x + 20, y + 32);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = col;
+      ctx.font = '700 56px Segment7, monospace';
+      ctx.fillText(val, x + w - 70, y + 88);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#55657d';
+      ctx.font = '600 20px sans-serif';
+      ctx.fillText(unit, x + w - 60, y + 88);
+
+      ctx.fillStyle = '#55657d';
+      ctx.font = '500 16px sans-serif';
+      ctx.fillText(sub, x + 20, y + 120);
+    }
+
+    function renderThemePressureTemp() {
       ctx.fillStyle = '#05070a';
       ctx.fillRect(0, 0, 640, 480);
-      ctx.strokeStyle = '#222834';
-      ctx.lineWidth = 3;
+
+      ctx.strokeStyle = '#1e2634';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(0, 240); ctx.lineTo(640, 240);
-      ctx.moveTo(320, 0); ctx.lineTo(320, 480);
+      ctx.moveTo(0, 230); ctx.lineTo(640, 230);
+      ctx.moveTo(320, 0); ctx.lineTo(320, 230);
       ctx.stroke();
 
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
-      ctx.fillText('LADEDRUCK (bar)', 160, 36);
+      ctx.fillStyle = '#8392a8'; ctx.font = '600 18px sans-serif';
+      ctx.fillText('LADEDRUCK (bar)', 160, 32);
 
-      let boostCol = state.boost < 0 ? '#ffffff' : (state.boost >= 1.45 ? '#ff2244' : '#00f0ff');
-      ctx.fillStyle = boostCol; ctx.font = '700 76px Segment7, monospace';
-      ctx.fillText((state.boost >= 0 ? '+' : '') + state.boost.toFixed(2), 160, 145);
+      let bCol = state.boost >= 1.45 ? '#ff2244' : (state.boost < 0 ? '#ffffff' : '#00f0ff');
+      ctx.fillStyle = bCol; ctx.font = '700 76px Segment7, monospace';
+      ctx.fillText((state.boost >= 0 ? '+' : '') + state.boost.toFixed(2), 160, 125);
+      drawHBar(30, 165, 260, 16, state.boost, -1.0, 2.0, bCol);
 
-      ctx.fillStyle = '#556070'; ctx.font = '500 18px sans-serif';
-      ctx.fillText(`Peak: ${state.boostPeak.toFixed(2)} bar`, 160, 205);
+      ctx.fillStyle = '#8392a8'; ctx.font = '600 18px sans-serif';
+      ctx.fillText('OELDRUCK (bar)', 480, 32);
 
-      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
-      ctx.fillText('ABGASTEMP EGT (°C)', 480, 36);
+      let opCol = state.oilPress < 1.2 ? '#ff2244' : (state.oilPress < 2.0 ? '#ffcc00' : '#00ff88');
+      ctx.fillStyle = opCol; ctx.font = '700 76px Segment7, monospace';
+      ctx.fillText(state.oilPress.toFixed(1), 480, 125);
+      drawHBar(350, 165, 260, 16, state.oilPress, 0.0, 7.0, opCol);
 
-      let egtCol = state.egt >= 950 ? '#ff2244' : (state.egt >= 900 ? '#ffd000' : '#ff9900');
-      ctx.fillStyle = egtCol; ctx.font = '700 76px Segment7, monospace';
-      ctx.fillText(`${Math.round(state.egt)}`, 480, 145);
+      const cols = [
+        { label: 'OELTEMP', val: `${state.oilTemp.toFixed(0)}°`, sub: '°C', v: state.oilTemp, min: 40, max: 140, col: state.oilTemp < 75 ? '#3399ff' : (state.oilTemp > 125 ? '#ff2244' : '#00ff88') },
+        { label: 'WASSER', val: `${state.coolant.toFixed(0)}°`, sub: '°C', v: state.coolant, min: 40, max: 120, col: state.coolant > 103 ? '#ff2244' : '#00f0ff' },
+        { label: 'LADELUFT', val: `${state.iat.toFixed(1)}°`, sub: '°C', v: state.iat, min: 10, max: 70, col: state.iat > 55 ? '#ff2244' : '#00ff88' },
+        { label: 'ABGAS EGT', val: `${Math.round(state.egt)}°`, sub: '°C', v: state.egt, min: 300, max: 1050, col: state.egt > 900 ? '#ff2244' : '#ff9900' }
+      ];
 
-      ctx.fillStyle = '#556070'; ctx.font = '500 18px sans-serif';
-      ctx.fillText(`Max: ${Math.round(state.egtPeak)} °C`, 480, 205);
+      for (let i = 0; i < 4; i++) {
+        let cx = 80 + i * 160;
+        ctx.fillStyle = '#8392a8'; ctx.font = '600 16px sans-serif';
+        ctx.fillText(cols[i].label, cx, 265);
 
-      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
-      ctx.fillText('LADELUFT (LLK °C)', 160, 276);
+        ctx.fillStyle = cols[i].col; ctx.font = '700 48px Segment7, monospace';
+        ctx.fillText(cols[i].val, cx, 340);
 
-      let iatCol = state.iat >= 60 ? '#ff2244' : (state.iat >= 45 ? '#ffd000' : '#00ff88');
-      ctx.fillStyle = iatCol; ctx.font = '700 76px Segment7, monospace';
-      ctx.fillText(state.iat.toFixed(1), 160, 385);
-
-      ctx.fillStyle = '#556070'; ctx.font = '500 18px sans-serif';
-      ctx.fillText(`ECU MAF: ${(state.iat - 2).toFixed(0)} °C`, 160, 445);
-
-      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
-      ctx.fillText('DREHZAHL / WASSER', 480, 276);
-
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 76px Segment7, monospace';
-      ctx.fillText(`${Math.round(state.rpm)}`, 480, 385);
-
-      let coolCol = state.coolant > 105 ? '#ff2244' : '#00b4d8';
-      ctx.fillStyle = coolCol; ctx.font = '600 20px sans-serif';
-      ctx.fillText(`Wasser: ${Math.round(state.coolant)} °C`, 480, 445);
-    }
-
-    function renderThemeSportCluster() {
-      ctx.fillStyle = '#06080c';
-      ctx.fillRect(0, 0, 640, 480);
-
-      const segments = 16, segW = 34, segH = 24;
-      const activeSegs = Math.floor((state.rpm / 7000) * segments);
-
-      for (let i = 0; i < segments; i++) {
-        let col = '#1a202c';
-        if (i < activeSegs) col = i < 8 ? '#00ff66' : (i < 12 ? '#ffcc00' : '#ff1133');
-        ctx.fillStyle = col;
-        ctx.fillRect(20 + i * (segW + 4), 16, segW, segH);
+        drawHBar(cx - 65, 370, 130, 14, cols[i].v, cols[i].min, cols[i].max, cols[i].col);
       }
 
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 22px monospace';
-      ctx.textAlign = 'right';
-      ctx.fillText(`${Math.round(state.rpm)} RPM`, 620, 72);
-
-      ctx.strokeStyle = '#333e50'; ctx.lineWidth = 2;
-      ctx.strokeRect(30, 95, 36, 260);
-
-      const egtH = Math.min(256, (state.egt / 1050) * 256);
-      let egtBarCol = state.egt > 900 ? '#ff1133' : '#ff8800';
-      ctx.fillStyle = egtBarCol;
-      ctx.fillRect(32, 95 + (260 - egtH - 2), 32, egtH);
-
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ffffff'; ctx.font = '600 16px sans-serif';
-      ctx.fillText('EGT', 48, 385);
-      ctx.fillStyle = egtBarCol; ctx.font = '700 20px monospace';
-      ctx.fillText(`${Math.round(state.egt)}°`, 48, 410);
-
-      const cx = 330, cy = 230;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 140, Math.PI * 0.75, Math.PI * 2.25);
-      ctx.strokeStyle = '#182030'; ctx.lineWidth = 18; ctx.stroke();
-
-      const boostPct = Math.max(0, Math.min(1, (state.boost + 1.0) / 3.0));
-      ctx.beginPath();
-      ctx.arc(cx, cy, 140, Math.PI * 0.75, Math.PI * (0.75 + boostPct * 1.5));
-      ctx.strokeStyle = state.boost > 1.45 ? '#ff1133' : '#00f0ff';
-      ctx.lineWidth = 18; ctx.stroke();
-
-      ctx.fillStyle = '#8a94a6'; ctx.font = '600 20px sans-serif';
-      ctx.fillText('TURBO BOOST', cx, cy - 50);
-
-      ctx.fillStyle = state.boost > 1.45 ? '#ff1133' : '#00f0ff';
-      ctx.font = '700 84px Segment7, monospace';
-      ctx.fillText((state.boost >= 0 ? '+' : '') + state.boost.toFixed(2), cx, cy + 35);
-
-      ctx.fillStyle = '#ffffff'; ctx.font = '600 22px sans-serif';
-      ctx.fillText('BAR', cx, cy + 75);
-
-      ctx.fillStyle = '#556070'; ctx.font = '500 16px sans-serif';
-      ctx.fillText(`PEAK: ${state.boostPeak.toFixed(2)} BAR`, cx, cy + 105);
-
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#121824';
-      ctx.fillRect(500, 95, 120, 80);
-      ctx.fillRect(500, 185, 120, 80);
-      ctx.fillRect(500, 275, 120, 80);
-
-      ctx.fillStyle = '#8a94a6'; ctx.font = '600 14px sans-serif';
-      ctx.fillText('LADELUFT', 510, 115);
-      ctx.fillStyle = state.iat > 50 ? '#ff1133' : '#00ff88'; ctx.font = '700 26px monospace';
-      ctx.fillText(`${state.iat.toFixed(1)}°`, 510, 150);
-
-      ctx.fillStyle = '#8a94a6'; ctx.font = '600 14px sans-serif';
-      ctx.fillText('WASSER', 510, 205);
-      ctx.fillStyle = '#00b4d8'; ctx.font = '700 26px monospace';
-      ctx.fillText(`${Math.round(state.coolant)}°`, 510, 240);
-
-      ctx.fillStyle = '#8a94a6'; ctx.font = '600 14px sans-serif';
-      ctx.fillText('LUFTMASSE', 510, 295);
-      ctx.fillStyle = '#ffd000'; ctx.font = '700 22px monospace';
-      ctx.fillText(`${state.maf.toFixed(0)} g/s`, 510, 330);
+      ctx.fillStyle = '#667788'; ctx.font = '500 18px monospace';
+      ctx.fillText(`BORDSPANNUNG: ${state.battery.toFixed(1)} VOLT`, 320, 448);
     }
 
-    function renderThemeOemPlus() {
-      ctx.fillStyle = '#001440';
+    function drawHBar(x, y, w, h, val, minV, maxV, col) {
+      ctx.fillStyle = '#111622';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#222d40';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, y, w, h);
+
+      let pct = (val - minV) / (maxV - minV);
+      if (pct < 0) pct = 0; if (pct > 1) pct = 1;
+      ctx.fillStyle = col;
+      ctx.fillRect(x + 2, y + 2, (w - 4) * pct, h - 4);
+    }
+
+    function renderThemeOemVdo() {
+      ctx.fillStyle = '#001238';
       ctx.fillRect(0, 0, 640, 480);
 
-      drawVdoGauge(150, 240, 120, state.boost, -1.0, 2.0, 'BAR', 'LADEDRUCK');
-      drawVdoGauge(490, 240, 120, state.egt, 0, 1100, '°C', 'ABGASTEMP');
+      drawVdoDial(150, 240, 120, state.boost, -1.0, 2.0, 'bar', 'BOOST');
+      drawVdoDial(490, 240, 120, state.oilPress, 0.0, 7.0, 'bar', 'OELDRUCK');
 
-      ctx.fillStyle = '#2b0000';
-      ctx.fillRect(270, 70, 100, 340);
+      ctx.fillStyle = '#200000';
+      ctx.fillRect(270, 40, 100, 400);
       ctx.strokeStyle = '#e60000';
       ctx.lineWidth = 3;
-      ctx.strokeRect(270, 70, 100, 340);
+      ctx.strokeRect(270, 40, 100, 400);
 
       ctx.textAlign = 'center';
-      ctx.fillStyle = '#ff1a1a'; ctx.font = '700 16px sans-serif';
-      ctx.fillText('MFA 1.8T', 320, 100);
+      ctx.fillStyle = '#ff1a1a';
+      ctx.font = '700 16px sans-serif';
+      ctx.fillText('MFA VITAL', 320, 70);
 
-      ctx.font = '500 13px sans-serif';
-      ctx.fillText('LADELUFT', 320, 140);
-      ctx.font = '700 24px monospace';
-      ctx.fillText(`${state.iat.toFixed(1)}°`, 320, 170);
+      ctx.font = '600 12px sans-serif'; ctx.fillText('OELTEMP', 320, 110);
+      ctx.font = '700 28px monospace'; ctx.fillText(`${state.oilTemp.toFixed(0)}°`, 320, 140);
 
-      ctx.font = '500 13px sans-serif';
-      ctx.fillText('KUEHLMITTEL', 320, 220);
-      ctx.font = '700 24px monospace';
-      ctx.fillText(`${Math.round(state.coolant)}°`, 320, 250);
+      ctx.font = '600 12px sans-serif'; ctx.fillText('WASSER', 320, 185);
+      ctx.font = '700 28px monospace'; ctx.fillText(`${state.coolant.toFixed(0)}°`, 320, 215);
 
-      ctx.font = '500 13px sans-serif';
-      ctx.fillText('DREHZAHL', 320, 305);
-      ctx.font = '700 24px monospace';
-      ctx.fillText(`${Math.round(state.rpm)}`, 320, 335);
+      ctx.font = '600 12px sans-serif'; ctx.fillText('LADELUFT', 320, 260);
+      ctx.font = '700 28px monospace'; ctx.fillText(`${state.iat.toFixed(1)}°`, 320, 290);
 
-      ctx.font = '500 12px sans-serif';
-      ctx.fillText('U/min', 320, 355);
+      ctx.font = '600 12px sans-serif'; ctx.fillText('ABGAS EGT', 320, 335);
+      ctx.font = '700 26px monospace'; ctx.fillText(`${Math.round(state.egt)}°`, 320, 365);
+
+      ctx.font = '600 14px monospace'; ctx.fillText(`${state.battery.toFixed(1)}V`, 320, 415);
     }
 
-    function drawVdoGauge(cx, cy, r, val, minV, maxV, unit, title) {
+    function drawVdoDial(cx, cy, r, val, minV, maxV, unit, title) {
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4; ctx.stroke();
@@ -446,8 +506,11 @@
         const x2 = cx + Math.cos(ang) * (r - 4);
         const y2 = cy + Math.sin(ang) * (r - 4);
         ctx.beginPath();
-        ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = i % 2 === 0 ? 3 : 1.5; ctx.stroke();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = i % 2 === 0 ? 3 : 1.5;
+        ctx.stroke();
       }
 
       ctx.textAlign = 'center';
@@ -464,53 +527,48 @@
       ctx.beginPath();
       ctx.moveTo(cx, cy); ctx.lineTo(nx, ny);
       ctx.strokeStyle = '#ff1122'; ctx.lineWidth = 4;
-      ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 8; ctx.stroke();
-      ctx.shadowBlur = 0;
+      ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 8;
+      ctx.stroke(); ctx.shadowBlur = 0;
 
       ctx.beginPath();
       ctx.arc(cx, cy, 10, 0, Math.PI * 2);
       ctx.fillStyle = '#222222'; ctx.fill();
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      ctx.stroke();
 
       ctx.fillStyle = '#ff2233'; ctx.font = '700 24px monospace';
       ctx.fillText(typeof val === 'number' && val % 1 !== 0 ? val.toFixed(2) : Math.round(val), cx, cy + 60);
     }
 
-    function renderThemeDataMatrix() {
-      ctx.fillStyle = '#06080d';
+    function renderThemeMonitorMatrix() {
+      ctx.fillStyle = '#06080e';
       ctx.fillRect(0, 0, 640, 480);
 
-      const w = 295, h = 98;
-      const x1 = 18, x2 = 327;
-      const yArr = [18, 130, 242, 354];
+      const rows = [
+        { name: 'OELDRUCK', val: `${state.oilPress.toFixed(1)} bar`, v: state.oilPress, min: 0, max: 7, col: state.oilPress < 1.2 ? '#ff2244' : '#00ff88' },
+        { name: 'OELTEMPERATUR', val: `${state.oilTemp.toFixed(0)} °C`, v: state.oilTemp, min: 40, max: 140, col: state.oilTemp < 75 ? '#3399ff' : (state.oilTemp > 125 ? '#ff2244' : '#00ff88') },
+        { name: 'KUEHLWASSER', val: `${state.coolant.toFixed(0)} °C`, v: state.coolant, min: 40, max: 120, col: state.coolant > 103 ? '#ff2244' : '#00f0ff' },
+        { name: 'LADELUFT (LLK)', val: `${state.iat.toFixed(1)} °C`, v: state.iat, min: 10, max: 70, col: state.iat > 55 ? '#ff2244' : '#00ff88' },
+        { name: 'ABGASTEMPERATUR', val: `${Math.round(state.egt)} °C`, v: state.egt, min: 300, max: 1050, col: state.egt > 900 ? '#ff2244' : '#ff9900' },
+        { name: 'LADEDRUCK (MAP)', val: `${(state.boost >= 0 ? '+' : '') + state.boost.toFixed(2)} bar`, v: state.boost, min: -1.0, max: 2.0, col: state.boost > 1.45 ? '#ff2244' : '#00f0ff' }
+      ];
 
-      drawTelemetryBox(x1, yArr[0], w, h, 'LADEDRUCK (MAP)', (state.boost >= 0 ? '+' : '') + state.boost.toFixed(2), 'bar', state.boost > 1.45 ? '#ff2244' : '#00f0ff');
-      drawTelemetryBox(x2, yArr[0], w, h, 'BOOST PEAK', state.boostPeak.toFixed(2), 'bar', '#ffffff');
+      for (let i = 0; i < 6; i++) {
+        let y = 14 + i * 68;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#8392a8'; ctx.font = '600 17px sans-serif';
+        ctx.fillText(rows[i].name, 24, y + 20);
 
-      drawTelemetryBox(x1, yArr[1], w, h, 'ABGASTEMPERATUR', `${Math.round(state.egt)}`, '°C EGT', state.egt > 900 ? '#ff2244' : '#ff9900');
-      drawTelemetryBox(x2, yArr[1], w, h, 'LADELUFT (LLK)', state.iat.toFixed(1), '°C IAT', state.iat > 55 ? '#ff2244' : '#00ff88');
+        ctx.textAlign = 'right';
+        ctx.fillStyle = rows[i].col; ctx.font = '700 24px monospace';
+        ctx.fillText(rows[i].val, 616, y + 20);
 
-      drawTelemetryBox(x1, yArr[2], w, h, 'LUFTMASSE (MAF)', state.maf.toFixed(1), 'g/s', '#ffd000');
-      drawTelemetryBox(x2, yArr[2], w, h, 'MOTORLAST', `${Math.round(state.load)}`, '%', '#ffffff');
-
-      drawTelemetryBox(x1, yArr[3], w, h, 'ZUENDWINKEL', `${state.ignition.toFixed(1)}`, '°KW', '#00f0ff');
-      drawTelemetryBox(x2, yArr[3], w, h, 'BORDSPANNUNG', `${state.battery.toFixed(1)}`, 'Volt', '#ffffff');
-    }
-
-    function drawTelemetryBox(x, y, w, h, label, val, unit, col) {
-      ctx.fillStyle = '#0f141f'; ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = '#222d40'; ctx.lineWidth = 1.5; ctx.strokeRect(x, y, w, h);
+        drawHBar(24, y + 32, 592, 16, rows[i].v, rows[i].min, rows[i].max, rows[i].col);
+      }
 
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#8392a8'; ctx.font = '600 15px sans-serif';
-      ctx.fillText(label, x + 14, y + 26);
-
-      ctx.textAlign = 'right';
-      ctx.fillStyle = col; ctx.font = '700 42px Segment7, monospace';
-      ctx.fillText(val, x + w - 14, y + 68);
-
-      ctx.fillStyle = '#55657d'; ctx.font = '500 13px sans-serif';
-      ctx.fillText(unit, x + w - 14, y + 88);
+      ctx.fillStyle = '#55657d'; ctx.font = '600 16px monospace';
+      ctx.fillText(`BORDSPANNUNG: ${state.battery.toFixed(1)} V | PEAK BOOST: ${state.boostPeak.toFixed(2)} bar`, 24, 452);
     }
 
     updateUiLabels();

@@ -1,4 +1,4 @@
-# VW 1.8T (AGU) Motronic M3.8.3 – ESP32 CYD Multi-Gauge 🚗💨
+# VW 1.8T (AGU) Motronic M3.8.3 – ESP32 CYD Motor-Zustand Monitor 🚗💨
 
 [![ESP32](https://img.shields.io/badge/Hardware-ESP32%20CYD-yellow.svg)](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display)
 [![Engine](https://img.shields.io/badge/Engine-1.8T%2020V%20AGU-blue.svg)](#)
@@ -9,55 +9,60 @@
 
 Ein multifunktionales digitales Zusatzinstrument für Fahrzeuge der VAG-Gruppe mit dem beliebten **1.8T 20V (AGU)** Motor und **Bosch Motronic M3.8.3** Steuergerät (z. B. VW Golf 4, Audi A3 8L, Škoda Octavia 1U). 
 
-Basierend auf dem kostengünstigen **ESP32 CYD ("Cheap Yellow Display" / ESP32-2432S028)** vereint dieses Projekt echte analoge Sensormessungen (Ladedruck, Abgastemperatur EGT, Ladelufttemperatur) mit nativen Live-Motordaten direkt aus dem Steuergerät über die **K-Line (KW1281-Protokoll)**.
+**Fokus auf den echten Betriebszustand & Vitalwerte des Motors:**  
+Anstatt Platz für eine redundante Drehzahlanzeige zu verschwenden, überwacht dieses Display die **lebenswichtigen Drücke, Temperaturen und Spannungen** des Turbo-Triebwerks in Echtzeit.
+
+---
+
+## 🩺 Überwachte Motor-Betriebswerte
+
+| Kategorie | Parameter | Geber / Sensor | Warnschwelle / Alarm |
+| :--- | :--- | :--- | :--- |
+| **Drücke** | **Öldruck (bar)** | 0-10 bar Geber an `GPIO 36` | Gelb < 2.0 bar / **Alarmrot < 1.2 bar** |
+| | **Ladedruck (bar)** | Bosch 3-Bar MAP an `GPIO 35` | Overboost-Warnung > 1.45 bar |
+| **Temperaturen** | **Öltemperatur (°C)** | NTC Sensor (Ölflansch) an `GPIO 39` | Blau < 75 °C (Kaltlauf) / **Rot > 125 °C** |
+| | **Kühlwasser (°C)** | Digital via K-Line (KW1281 MWB 001) | Soll: 90 °C / **Rot > 103 °C** |
+| | **Ladeluft LLK (°C)** | Schneller NTC (Druckrohr) an `GPIO 34` | Heat-Soak Warnung > 55 °C |
+| | **Abgastemp EGT (°C)**| K-Typ Thermoelement & MAX31855 SPI | Gelb > 900 °C / **Alarmrot > 950 °C** |
+| **Elektrik** | **Bordspannung (V)** | Digital via K-Line (KW1281 MWB 003) | Gelb/Rot < 12.0 V oder > 15.0 V |
 
 ---
 
 ## 🎨 4 Umschaltbare Display-Design Studien
 
-Durch einfaches Tippen auf den Touchscreen kann jederzeit zwischen **4 vollwertigen Design-Themen** gewechselt werden:
+Durch einfaches Antippen des Touchscreens wechselst du jederzeit nahtlos zwischen **4 spezialisierten Anzeige-Layouts**:
 
 ```
 +-----------------------------------+-----------------------------------+
-| 1. CLASSIC QUAD (4-Kacheln)       | 2. SPORT CLUSTER (Rennsport)      |
-| Große Digits für Ladedruck, EGT,  | F1/GT3 Shift-Light Drehzahlband,  |
-| Ladeluft & Drehzahl/Wasser.       | riesiger Ladedruck, EGT-Balken.   |
+| 1. HEALTH GRID (6 Kacheln)        | 2. PRESSURE & TEMP (Druck/Temp)   |
+| 2 Drücke (Ladedruck / Öldruck),   | 2 riesige Digitalanzeigen oben    |
+| 4 Temperaturen (Öl/H2O/LLK/EGT),  | (Ladedruck/Öldruck), 4 Bargraphen |
+| Status-Footer mit Bordspannung.   | für Temperaturen unten.           |
 +-----------------------------------+-----------------------------------+
-| 3. OEM+ GOLF 4 / AUDI A3          | 4. DATA MATRIX (8 Telemetrie-Boxen|
-| Original VW-Blaues Backlight mit  | High-Density Anzeige für Logging, |
-| roten VDO-Zeigern & MFA-Display.  | Zündwinkel, MAF, Motorlast etc.   |
+| 3. OEM+ GOLF 4 VDO LOOK           | 4. MONITOR MATRIX (Statusleisten) |
+| Blaues Backlight mit roten VDO-   | 6 horizontale Parameterleisten    |
+| Runduhren (Ladedruck & Öldruck),  | mit farbigen Alarmschwellen       |
+| zentrales rotes MFA-Display.      | und Min/Max-Wertspeichern.        |
 +-----------------------------------+-----------------------------------+
 ```
 
 > [!TIP]
-> **Interaktive Vorschau:** Eine interaktive Web-Simulation aller 4 Designs steht unter [`design_study/index.html`](design_study/index.html) bereit.
+> **Interaktive Live-Vorschau:** Öffne [`design_study/index.html`](design_study/index.html) im Webbrowser, um alle 4 Themes mit Schiebereglern und Fahrzustands-Presets (Kaltstart, Leerlauf, Volllast, Überhitzung) auszuprobieren!
 
 ---
 
-## 🚀 Features
+## 🚀 Features & Sensor-Management
 
-- **Echter Ladedruck (Boost)**:
-  - Da der 1.8T AGU ab Werk keinen Ladedrucksensor besitzt (reine Luftmassen-Steuerung), wird ein externer **3-Bar MAP-Sensor** (z. B. Bosch 0 281 002 437) über einen analogen Pin eingelesen.
-  - **Auto-Zeroing:** Automatischer Nullpunktabgleich des Umgebungs-Barometerdrucks beim Einschalten der Zündung.
-  - **Peak-Hold:** Höchster erreichter Ladedruck wird kontinuierlich gespeichert.
-- **Ladelufttemperatur (Charge Air Temp / IAT)**:
-  - Schneller NTC-Temperatursensor (z. B. Bosch M12) nach dem Ladeluftkühler / vor der Drosselklappe.
-  - Steinhart-Hart / Beta-Berechnung mit Alarmierung bei Heat-Soak (> 60 °C).
-  - Automatischer Fallback auf die native Steuergeräte-Ansauglufttemperatur via OBD.
-- **Abgastemperatur (EGT)**:
-  - Anschluss für ein **K-Typ Thermoelement** über den **Adafruit MAX31855** SPI-Verstärker.
-  - Dynamische Warnstufen: Gelb ab 900 °C, Alarmrot ab 950 °C.
-- **K-Line / KW1281 Diagnose-Schnittstelle**:
-  - Vollständiger KW1281 Protokollstack mit 5-Baud Slow-Init (Adresse `0x01` Motor-ECU).
-  - Zyklisches Auslesen der Messwertblöcke **MWB 001, MWB 002 und MWB 003**:
-    - Motordrehzahl (RPM)
-    - Kühlmitteltemperatur (°C)
-    - Luftmasse (MAF g/s)
-    - Motorlast (%)
-    - Zündwinkel & Bordspannung (V)
-- **Bench-Testumgebung & Simulator**:
-  - Umschaltbarer Firmware-Simulator (`#define ENABLE_SIMULATION true`) für Tests ohne Auto.
-  - Eigener Python KW1281 ECU-Simulator (`tools/ecu_simulator.py`) für Hardware-Tests am Schreibtisch.
+- **Öldrucküberwachung mit Min-Hold:**
+  - Erfasst den minimalen Öldruck bei betriebswarmem Motor (wichtig zur Erkennung von verschlissenen Pleuellagern oder verstopftem Ölsieb).
+- **Öltemperatur mit Kaltlauf-Erkennung:**
+  - Solange das Öl unter 75 °C hat, wird der Wert zur Schonung des Motors blau dargestellt. Ab 125 °C warnt das Display vor Ölfilmabriss.
+- **Ladedruck mit Auto-Zeroing:**
+  - Beim Einschalten der Zündung wird der barometrische Umgebungsdruck automatisch genullt, um unabhängig von Wetter und Meereshöhe exakt 0,00 bar Relativdruck anzuzeigen.
+- **Ladelufttemperatur (Charge Air Temp nach LLK):**
+  - Zeigt exakt an, wie effizient der Ladeluftkühler arbeitet und warnt vor Leistungsverlust durch Heat-Soak im Sommer oder Stau.
+- **K-Line / KW1281 Protokoll:**
+  - Fragt ohne zusätzliche Geber Kühlwassertemperatur und Bordspannung direkt digital aus dem Motronic M3.8.3 Steuergerät ab.
 
 ---
 
@@ -66,16 +71,16 @@ Durch einfaches Tippen auf den Touchscreen kann jederzeit zwischen **4 vollwerti
 ```
 Motronic-OBD-Gauge/
 ├── AGU_ESP32_Gauge/
-│   ├── AGU_ESP32_Gauge.ino       # Hauptsketch mit Setup- & Loop-Routinen
-│   ├── Config.h                  # Pins, Kalibrierung, Alarmschwellen, Theme-Konfiguration
-│   ├── Sensors.h & .cpp          # MAP-Sensor, MAX31855, Ladeluft-NTC & Filterung
-│   ├── KW1281.h & .cpp           # K-Line KW1281 Diagnoseprotokoll-Implementierung
+│   ├── AGU_ESP32_Gauge.ino       # Hauptsketch (FreeRTOS / Non-blocking)
+│   ├── Config.h                  # Pins, Alarmschwellen & Sensor-Kalibrierung
+│   ├── Sensors.h & .cpp          # Ladedruck, Öldruck, Öltemp, Ladeluft, EGT & Filter
+│   ├── KW1281.h & .cpp           # K-Line Diagnoseprotokoll für Kühlwasser & Batt V
 │   ├── Simulator.h & .cpp        # Realistischer Motor- und Fahrzyklus-Simulator
-│   └── DisplayUI.h & .cpp        # Render-Engine für alle 4 Design-Themes & Touch
+│   └── DisplayUI.h & .cpp        # 4 Themes fokussiert auf Motor-Betriebszustand
 ├── tools/
-│   └── ecu_simulator.py          # Python PC-Simulator für KW1281 K-Line Tests
+│   └── ecu_simulator.py          # Python Simulator für K-Line Tests am Schreibtisch
 ├── docs/
-│   ├── SCHALTPLAN.md             # Vollständiger Verdrahtungsplan aller Sensoren
+│   ├── SCHALTPLAN.md             # Vollständiger Anschlussplan (alle 4 ADC1 Pins)
 │   └── TESTUMGEBUNG.md           # Anleitung für Simulation & Bench-Testing
 ├── design_study/
 │   └── index.html                # Interaktive Web-Designstudie & Sensor-Controller
@@ -86,39 +91,21 @@ Motronic-OBD-Gauge/
 
 ---
 
-## 🛠 Benötigte Hardware & Anschlüsse
+## 🛠 Anschlussbelegung (ESP32 CYD)
 
-| Komponente | Beschreibung | ESP32 CYD Pin |
+Alle analogen Geber nutzen rauschfreie **ADC1-Pins** des ESP32:
+
+| Sensor / Geber | ESP32 Pin | Beschreibung |
 | :--- | :--- | :--- |
-| **ESP32 CYD** | ESP32-2432S028R mit 2.8" TFT & Touch | – |
-| **MAP-Sensor** | 3-Bar Drucksensor (z. B. Bosch 0 281 002 437) | `GPIO 35` (über Spannungsteiler 5V -> 3.3V) |
-| **Ladeluft-NTC** | Schneller NTC-Sensor nach Ladeluftkühler | `GPIO 34` (mit 2.2 kΩ Pullup zu 3.3V) |
-| **MAX31855 Modul** | SPI-Verstärker für K-Typ Thermoelement | `CS: 21` / `DO: 22` / `CLK: 27` |
-| **K-Line Transceiver** | L9637D oder Si9241A Board an OBD Pin 7 | `RX: GPIO 16` / `TX: GPIO 17` |
-| **Spannungsversorgung** | 12V ➔ 5V Kfz Step-Down Wandler | Micro-USB / 5V Header am CYD |
+| **Ladedruck (MAP)** | `GPIO 35` | 0.5V - 4.5V über Spannungsteiler 5V -> 3.0V |
+| **Öldruck (0-10 bar)** | `GPIO 36` | 0.5V - 4.5V über Spannungsteiler 5V -> 3.0V |
+| **Öltemperatur** | `GPIO 39` | NTC Geber am Ölfilterflansch (2.2 kΩ Pullup an 3.3V) |
+| **Ladeluft (LLK)** | `GPIO 34` | Schneller NTC vor Drosselklappe (2.2 kΩ Pullup an 3.3V) |
+| **Abgastemperatur (EGT)** | `GPIO 21, 22, 27`| SPI Digital (MAX31855 Modul mit K-Typ Thermoelement) |
+| **Kühlwasser & Spannung** | `GPIO 16, 17` | L9637D Transceiver an K-Line Pin 7 der OBD-2 Buchse |
 
-> [!WARNING]
-> Für Details zur Pegelanpassung (Spannungsteiler für MAP-Sensor) siehe den ausführlichen [Schaltplan](docs/SCHALTPLAN.md).
-
----
-
-## 📦 Installation & Inbetriebnahme
-
-1. **Repository klonen:**
-   ```bash
-   git clone https://github.com/Awsmqt/Motronic-OBD-Gauge.git
-   ```
-2. **Arduino IDE vorbereiten:**
-   - Installiere das **ESP32 Board-Package** (`esp32` von Espressif Systems).
-   - Installiere die Bibliotheken:
-     - `TFT_eSPI` (Bodmer)
-     - `Adafruit MAX31855 library` (Adafruit)
-3. **`TFT_eSPI` Konfiguration:**
-   - In der Datei `User_Setup.h` der TFT_eSPI Bibliothek sicherstellen, dass die CYD Pins (ILI9341 / ST7789) aktiviert sind.
-4. **Flashen:**
-   - Öffne [`AGU_ESP32_Gauge/AGU_ESP32_Gauge.ino`](AGU_ESP32_Gauge/AGU_ESP32_Gauge.ino) in der Arduino IDE.
-   - Board: `ESP32 Dev Module`
-   - Klicke auf **Upload**.
+> [!NOTE]
+> Für Details siehe den [Schaltplan & Verdrahtungsplan](docs/SCHALTPLAN.md).
 
 ---
 

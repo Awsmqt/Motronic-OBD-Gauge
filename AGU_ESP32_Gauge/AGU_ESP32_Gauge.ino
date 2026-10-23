@@ -1,20 +1,21 @@
 /*
  * ==============================================================================
- * VW 1.8T AGU (Bosch Motronic M3.8.3) - ESP32 CYD Multi-Gauge & OBD Telemetry
+ * VW 1.8T AGU (Bosch Motronic M3.8.3) - ESP32 CYD Motor-Betriebszustand Monitor
  * ==============================================================================
+ * 
+ * Fokus: Motor-Gesundheit & Vitaldaten (Drücke, Temperaturen, Elektrik):
+ *   - Ladedruck (relativ in bar) & Öldruck (0-10 bar Geber)
+ *   - Öltemperatur, Kühlwasser, Ladeluft (LLK), Abgastemperatur (EGT)
+ *   - Bordspannung / Batterie (V)
  * 
  * Hardware:
  *   - ESP32 CYD (Cheap Yellow Display - ESP32-2432S028)
  *   - Bosch 3-Bar / 4-Bar MAP Sensor (Ladedruck analog an GPIO 35)
+ *   - 0-10 Bar Öldruck-Sensor (analog an GPIO 36)
+ *   - NTC Öltemperatur-Sensor (analog an GPIO 39)
+ *   - NTC Ladelufttemperatur-Sensor (analog an GPIO 34 nach LLK)
  *   - K-Typ Thermoelement mit Adafruit MAX31855 (Abgastemperatur EGT via SPI)
- *   - Externer Ladeluft-NTC Sensor (Ladeluftkühler-Ausgang an GPIO 34)
- *   - L9637D / Si9241 K-Line Transceiver an Serial2 (KW1281 OBD Protokoll)
- * 
- * Features:
- *   - KW1281 5-Baud Slow Init & automatisches Auslesen von MWB 001, 002, 003
- *   - Auto-Zeroing des barometrischen Umgebungsdrucks beim Einschalten
- *   - 4 umschaltbare Design-Themes (Touch auf den Bildschirm wechselt das Design)
- *   - Integrierter Motor-Simulator für Bench-Testing ohne echtes Fahrzeug
+ *   - L9637D K-Line Transceiver an Serial2 (KW1281 OBD für Kühlwasser & Bordspannung)
  * ==============================================================================
  */
 
@@ -40,14 +41,16 @@ void setup() {
     Serial.begin(115200);
     delay(200);
     Serial.println("\n=======================================================");
-    Serial.println("  VW 1.8T (AGU) Motronic M3.8.3 ESP32 CYD Multi-Gauge  ");
+    Serial.println("  VW 1.8T (AGU) Motronic M3.8.3 Motor-Zustand Monitor  ");
     Serial.println("=======================================================");
 
     // Datenstruktur initialisieren
     memset(&telemetryData, 0, sizeof(SensorData));
-    telemetryData.currentTheme = THEME_CLASSIC_QUAD;
+    telemetryData.currentTheme = THEME_HEALTH_GRID;
     telemetryData.boostPeakBar = -1.0f;
     telemetryData.exhaustTempPeak = 0.0f;
+    telemetryData.oilTempPeak = 0.0f;
+    telemetryData.oilPressureMinBar = 0.0f;
 
     // 1. Display und UI initialisieren
     ui.begin();
@@ -79,10 +82,8 @@ void loop() {
         lastSensorSampleTime = now;
 
         #if ENABLE_SIMULATION
-            // Testumgebung: Dynamischer Motor- & Sensordaten-Generator
             simulator.update(telemetryData);
         #else
-            // Reales Fahrzeug: Externe Sensoren & K-Line abfragen
             sensors.update(telemetryData);
             kw1281.update(telemetryData);
         #endif
@@ -106,13 +107,13 @@ void loop() {
     // --------------------------------------------------------------------------
     if (now - lastSerialLogTime >= 1000) {
         lastSerialLogTime = now;
-        Serial.printf("[Telemetrie] Boost: %.2f bar (Peak: %.2f) | EGT: %.0f C | LLK: %.1f C | RPM: %d | Coolant: %.0f C | K-Line: %s\n",
+        Serial.printf("[Motor-Status] Boost: %.2f bar | Oel-P: %.1f bar | Oel-T: %.0f C | H2O: %.0f C | LLK: %.1f C | EGT: %.0f C | Batt: %.1f V\n",
                       telemetryData.boostBar,
-                      telemetryData.boostPeakBar,
-                      telemetryData.exhaustTemp,
+                      telemetryData.oilPressureBar,
+                      telemetryData.oilTemp,
+                      telemetryData.coolantTemp,
                       telemetryData.chargeAirTemp,
-                      telemetryData.ecuRpm,
-                      telemetryData.ecuCoolantTemp,
-                      (telemetryData.klineConnected ? "ONLINE" : "OFFLINE"));
+                      telemetryData.exhaustTemp,
+                      telemetryData.batteryVolt);
     }
 }
