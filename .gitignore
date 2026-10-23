@@ -1,0 +1,23 @@
+# Prerequisites
+*.d
+*.o
+*.ko
+*.obj
+*.elf
+*.bin
+*.hex
+
+# Build directories
+build/
+output/
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# IDE configurations
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
