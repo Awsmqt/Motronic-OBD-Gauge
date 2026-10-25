@@ -35,6 +35,12 @@ Ein kurzes Tippen wechselt zwischen genau zwei Ansichten; langes Drücken setzt 
 1. **Messwerte:** Acht kompakte Werte für Drücke, Temperaturen, Lambda und Drehzahl; Bordspannung und ECU-Verbindung stehen im Footer.
 2. **Motorzustand:** Sechs farbcodierte Statusbalken und eine Gesamtanzeige für Warnung oder kritischen Zustand.
 
+Schematische Vorschauen (320 × 240 px; keine Hardware-Screenshots):
+
+| Messwerte | Motorzustand |
+| :---: | :---: |
+| ![Display-Vorschau mit Messwerten](docs/images/display-messwerte.svg) | ![Display-Vorschau mit farbcodiertem Motorzustand](docs/images/display-motorzustand.svg) |
+
 ---
 
 ## 📱 iPhone & Smartphone Web-Dashboard (WiFi)
@@ -100,7 +106,8 @@ Motronic-OBD-Gauge/
 │   └── ecu_simulator.py          # Python Simulator für K-Line Tests am Schreibtisch
 ├── docs/
 │   ├── SCHALTPLAN.md             # Vollständiger Anschlussplan (alle 4 ADC1 Pins)
-│   └── TESTUMGEBUNG.md           # Anleitung für Simulation & Bench-Testing
+│   ├── TESTUMGEBUNG.md           # Anleitung für Simulation & Bench-Testing
+│   └── images/                   # Vorschauen der beiden Display-Ansichten
 ├── .gitignore
 ├── LICENSE
 └── README.md
