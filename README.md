@@ -18,27 +18,22 @@ Anstatt Platz für eine redundante Drehzahlanzeige zu verschwenden, überwacht d
 
 | Kategorie | Parameter | Geber / Sensor | Warnschwelle / Alarm |
 | :--- | :--- | :--- | :--- |
-| **Drücke** | **Öldruck (bar)** | 0-10 bar Geber an `GPIO 36` | Gelb < 2.0 bar / **Alarmrot < 1.2 bar** |
+| **Drücke** | **Öldruck (bar)** | 0-10 bar Geber an `GPIO 36` | Warnung < 1.2 bar / **kritisch < 0.8 bar** |
 | | **Ladedruck (bar)** | Bosch 3-Bar MAP an `GPIO 35` | Overboost-Warnung > 1.45 bar |
-| **Temperaturen** | **Öltemperatur (°C)** | NTC Sensor (Ölflansch) an `GPIO 39` | Blau < 75 °C (Kaltlauf) / **Rot > 125 °C** |
-| | **Kühlwasser (°C)** | Digital via K-Line (KW1281 MWB 001) | Soll: 90 °C / **Rot > 103 °C** |
+| **Temperaturen** | **Öltemperatur (°C)** | NTC Sensor (Ölflansch) an `GPIO 39` | Blau < 75 °C (Kaltlauf) / Warnung > 120 °C / **kritisch > 135 °C** |
+| | **Kühlwasser (°C)** | Digital via K-Line (KW1281 MWB 001) | Soll: 90 °C / Warnung > 103 °C / **kritisch > 112 °C** |
 | | **Ladeluft LLK (°C)** | Schneller NTC (Druckrohr) an `GPIO 34` | Heat-Soak Warnung > 55 °C |
-| | **Abgastemp EGT (°C)**| K-Typ Thermoelement & MAX31855 SPI | Gelb > 900 °C / **Alarmrot > 950 °C** |
+| | **Abgastemp EGT (°C)**| K-Typ Thermoelement & MAX31855 SPI | Warnung > 900 °C / **kritisch > 950 °C** |
 | **Elektrik** | **Bordspannung (V)** | Digital via K-Line (KW1281 MWB 003) | Gelb/Rot < 12.0 V oder > 15.0 V |
 
 ---
 
-## 🎨 7 Umschaltbare Display-Design Studien & Diagnose-Seiten
+## 🎨 Zwei minimalistische Display-Ansichten
 
-Durch einfaches Antippen des Touchscreens wechselst du jederzeit nahtlos zwischen **7 spezialisierten Anzeige-Layouts**:
+Ein kurzes Tippen wechselt zwischen genau zwei Ansichten; langes Drücken setzt die Peak- und Minimalwerte zurück:
 
-1. **HEALTH GRID (6 Kacheln):** 2 Drücke (Ladedruck / Öldruck), 4 Temperaturen (Öl/H2O/LLK/EGT), Status-Footer mit Bordspannung.
-2. **PRESSURE & TEMP (Druck/Temp):** 2 riesige Digitalanzeigen oben (Ladedruck/Öldruck), 4 Bargraphen für Temperaturen unten.
-3. **OEM+ GOLF 4 VDO LOOK:** Blaues Backlight mit roten VDO-Runduhren (Ladedruck & Öldruck) und zentralem MFA-Display.
-4. **MONITOR MATRIX (Statusleisten):** 6 horizontale Parameterleisten mit farbigen Alarmschwellen und Min/Max-Wertspeichern.
-5. **FEHLERSPEICHER (DTC):** Live-Auslesung des Motronic-Fehlerspeichers (z.B. P0565, P1092) mit Status (sporadisch/statisch) und Ein-Klick-Löschfunktion (langes Drücken oder per iPhone).
-6. **TREND-CHART (60 Sekunden Verlauf):** Flüssiges Echtzeit-Diagramm der Temperaturkurven (Öl, Kühlwasser, Ladeluft) im direkten Vergleich.
-7. **ECU LIVE-DATEN (MWB 1-6):** Echtzeit-Balken für Lambda (λ), Einspritzdauer (ms), Zündwinkel (°KW), Klopfrücknahme (°) und Drosselklappe (%).
+1. **Messwerte:** Acht kompakte Werte für Drücke, Temperaturen, Lambda und Drehzahl; Bordspannung und ECU-Verbindung stehen im Footer.
+2. **Motorzustand:** Sechs farbcodierte Statusbalken und eine Gesamtanzeige für Warnung oder kritischen Zustand.
 
 ---
 
@@ -55,7 +50,7 @@ Das Display erzeugt einen eigenen automotiven **WiFi Access-Point**, sodass du w
   - **Tuner-Aufzeichnung:** Start/Stopp-Logging mit 23 Spalten (Drehzahl, Last, Lambda, Zündwinkel, Klopfen, Ladedruck u.v.m.) als CSV für Chiptuner, wahlweise Standard (Komma/Punkt) oder Excel DE
   - Fehlercodes (DTCs) direkt vom Handy auslesen und mit einem Klick löschen – **mit Klartext-Beschreibung und Prüfhinweisen** (z.B. `P0300 – Zündaussetzer erkannt`)
   - Peak-Werte (Max Boost, Max EGT, Min Öldruck) per Button zurücksetzen
-  - Display-Theme aus der Ferne umschalten
+  - Zwischen den zwei Display-Ansichten wählen
   - Unterstützt Apples **"Zum Home-Bildschirm hinzufügen"** (startet im Vollbild ohne Safari-Adressleiste)
   - Funktioniert überall ohne Internet / ohne App-Installation
 
@@ -77,7 +72,7 @@ Der eingebaute SD-Kartenslot des CYD zeichnet alle Motordaten vollautomatisch au
 - **Öldrucküberwachung mit Min-Hold:**
   - Erfasst den minimalen Öldruck bei betriebswarmem Motor (wichtig zur Erkennung von verschlissenen Pleuellagern oder verstopftem Ölsieb).
 - **Öltemperatur mit Kaltlauf-Erkennung:**
-  - Solange das Öl unter 75 °C hat, wird der Wert zur Schonung des Motors blau dargestellt. Ab 125 °C warnt das Display vor Ölfilmabriss.
+  - Solange das Öl unter 75 °C hat, wird der Wert zur Schonung des Motors blau dargestellt. Ab 120 °C warnt das Display; ab 135 °C ist der Zustand kritisch.
 - **Ladedruck mit Auto-Zeroing:**
   - Beim Einschalten der Zündung wird der barometrische Umgebungsdruck automatisch genullt, um unabhängig von Wetter und Meereshöhe exakt 0,00 bar Relativdruck anzuzeigen.
 - **Ladelufttemperatur (Charge Air Temp nach LLK):**
@@ -92,13 +87,13 @@ Der eingebaute SD-Kartenslot des CYD zeichnet alle Motordaten vollautomatisch au
 ```
 Motronic-OBD-Gauge/
 ├── AGU_ESP32_Gauge/
-│   ├── AGU_ESP32_Gauge.ino       # Hauptsketch (FreeRTOS / Non-blocking)
+│   ├── AGU_ESP32_Gauge.ino       # Hauptsketch mit zeitgesteuerter Loop
 │   ├── Config.h                  # Pins, Alarmschwellen, WiFi- & Logger-Parameter
 │   ├── Sensors.h & .cpp          # Ladedruck, Öldruck, Öltemp, Ladeluft, EGT & Filter
 │   ├── KW1281.h & .cpp           # K-Line Diagnoseprotokoll (MWB 1-6 + DTCs lesen/löschen)
 │   ├── DtcDatabase.h & .cpp      # Fehlercode-Datenbank (VAG-Code → P-Code, Klartext, Ursachen)
 │   ├── Simulator.h & .cpp        # Realistischer Motor- und Fahrzyklus-Simulator
-│   ├── DisplayUI.h & .cpp        # 7 Themes inkl. DTC-Diagnose, Trend-Chart & ECU-Live
+│   ├── DisplayUI.h & .cpp        # Zwei minimalistische Display-Ansichten
 │   ├── Logger.h & .cpp           # SD-Karten CSV Datenlogger (HSPI, 18 Parameter)
 │   └── WebDashboard.h & .cpp     # WiFi Access-Point & iPhone Web-Dashboard
 ├── tools/
@@ -106,8 +101,6 @@ Motronic-OBD-Gauge/
 ├── docs/
 │   ├── SCHALTPLAN.md             # Vollständiger Anschlussplan (alle 4 ADC1 Pins)
 │   └── TESTUMGEBUNG.md           # Anleitung für Simulation & Bench-Testing
-├── design_study/
-│   └── index.html                # Interaktive Web-Designstudie & Sensor-Controller
 ├── .gitignore
 ├── LICENSE
 └── README.md

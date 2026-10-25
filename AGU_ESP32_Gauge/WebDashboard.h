@@ -15,7 +15,6 @@ public:
 private:
     WebServer server;
     SensorData *currentData;
-    unsigned long lastClientCheck;
 
     void setupRoutes();
     void handleRoot();
@@ -23,7 +22,7 @@ private:
     void handleDtcRead();
     void handleDtcClear();
     void handlePeakReset();
-    void handleThemeSwitch();
+    void handleThemeSelect();
 };
 
 #endif // WEB_DASHBOARD_H

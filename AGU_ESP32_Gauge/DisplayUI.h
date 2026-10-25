@@ -18,45 +18,17 @@ private:
     unsigned long touchPressStart;
     bool wasTouched;
 
-    // Trend-Chart Ringpuffer (60 Datenpunkte ≈ 60 Sekunden bei 1 Hz)
-    static const uint8_t TREND_BUF_SIZE = 60;
-    float trendOilTemp[TREND_BUF_SIZE];
-    float trendCoolant[TREND_BUF_SIZE];
-    float trendChargeAir[TREND_BUF_SIZE];
-    uint8_t trendIndex;
-    uint8_t trendCount;
-    unsigned long lastTrendUpdate;
+    const uint16_t COLOR_BG = 0x0821;
+    const uint16_t COLOR_LINE = 0x2124;
+    const uint16_t COLOR_CYAN = 0x07FF;
+    const uint16_t COLOR_GREEN = 0x07E0;
+    const uint16_t COLOR_YELLOW = 0xFFE0;
+    const uint16_t COLOR_BLUE = 0x03BF;
 
-    // Farbpalette
-    const uint16_t COLOR_BG_DARK       = 0x0821;
-    const uint16_t COLOR_OEM_BLUE      = 0x0012; // VW Golf 4 Tacho-Tiefblau
-    const uint16_t COLOR_OEM_RED       = 0xF800; // VW Signalrot
-    const uint16_t COLOR_GRID_BORDER   = 0x2124; // Dezente Kachelumrandung
-    const uint16_t COLOR_ACCENT_CYAN   = 0x07FF; // Cyan für Ladedruck
-    const uint16_t COLOR_ACCENT_ORANGE = 0xFD20; // Orange für EGT / Öldruck
-    const uint16_t COLOR_ACCENT_GREEN  = 0x07E0; // Grün für Normalwerte
-    const uint16_t COLOR_ACCENT_YELLOW = 0xFFE0; // Gelb für Warnung
-    const uint16_t COLOR_COLD_BLUE     = 0x3CF;  // Kaltes Öl (< 75°C)
-
-    void initTheme(DisplayTheme theme);
-
-    // Die 4 motorzustands-orientierten Design-Studien
-    void renderHealthGrid(const SensorData &data);
-    void renderPressureTemp(const SensorData &data);
-    void renderOemVdo(const SensorData &data);
-    void renderMonitorMatrix(const SensorData &data);
-
-    // 3 neue Diagnose- und Analyse-Seiten
-    void renderDtcDiag(SensorData &data);
-    void renderTrendChart(const SensorData &data);
-    void renderEcuLive(const SensorData &data);
-
-    // Hilfsfunktionen
-    void drawHealthTile(int x, int y, int w, int h, const char *label, const char *valStr, const char *unit, const char *subtext, uint16_t valColor);
-    void drawVdoDial(int cx, int cy, int r, float val, float minV, float maxV, const char *unit, const char *title, uint16_t needleCol);
-    void drawHorizontalBar(int x, int y, int w, int h, float val, float minV, float maxV, uint16_t barCol);
-    void drawTrendLine(const float *buf, uint8_t idx, uint8_t count, int x, int y, int w, int h, float minV, float maxV, uint16_t color);
-    void formatDtcCode(uint16_t raw, char *out);
+    void renderMeasurements(const SensorData &data);
+    void renderHealth(const SensorData &data);
+    void drawBar(int x, int y, int w, float value, float minValue, float maxValue, uint16_t color);
+    uint16_t healthColor(bool warning, bool critical) const;
 };
 
 #endif // DISPLAY_UI_H

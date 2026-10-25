@@ -4,12 +4,11 @@ KW1281Protocol::KW1281Protocol()
     : state(KLINE_DISCONNECTED),
       blockCounter(0),
       currentGroup(1),
+      initBitIndex(0),
+      keyByteCount(0),
+      keyBytes{0, 0},
       stateTimer(0),
-      lastByteReceivedTime(0),
-      lastDtcCheckTime(0),
-      rxIndex(0),
-      dtcReadRequested(false),
-      dtcClearRequested(false) {
+      lastDtcCheckTime(0) {
 }
 
 void KW1281Protocol::begin() {
@@ -40,49 +39,16 @@ uint8_t KW1281Protocol::readByteWithTimeout(uint16_t timeoutMs, bool *ok) {
         delayMicroseconds(100);
     }
     if (ok) *ok = true;
-    lastByteReceivedTime = millis();
     return Serial2.read();
 }
 
 void KW1281Protocol::start5BaudInit() {
     Serial.println("[KW1281] Starte 5-Baud Slow-Init für Motorsteuergerät (0x01)...");
-    
-    // Serial2 vorübergehend freigeben für GPIO Bit-Banging
     Serial2.end();
     pinMode(PIN_KLINE_TX, OUTPUT);
     digitalWrite(PIN_KLINE_TX, HIGH);
-    delay(200);
-
-    // Adresse 0x01: Startbit(0), 7 Datenbits LSB, Odd Parity, Stopbit(1)
-    // 5 Baud = 200 ms pro Bit!
-    // Bits für 0x01:
-    // Startbit: 0
-    // Bit 0: 1
-    // Bit 1: 0
-    // Bit 2: 0
-    // Bit 3: 0
-    // Bit 4: 0
-    // Bit 5: 0
-    // Bit 6: 0
-    // Parity (ungerade Summe): Da nur Bit0 gesetzt ist (1 Eins), Parity = 0
-    // Stopbit: 1
-
-    uint8_t bits[10] = { 0, 1, 0, 0, 0, 0, 0, 0, 0, 1 };
-    for (int i = 0; i < 10; i++) {
-        digitalWrite(PIN_KLINE_TX, bits[i] ? HIGH : LOW);
-        delay(200);
-    }
-    digitalWrite(PIN_KLINE_TX, HIGH);
-    delay(100);
-
-    // K-Line Serial2 wieder auf 9600 Baud initialisieren (Standard KW1281 Init)
-    // Manche Bosch M3.8.3 nutzen 9600, manche 10400.
-    Serial2.begin(9600, SERIAL_8N1, PIN_KLINE_RX, PIN_KLINE_TX);
-    
-    // Empfangspuffer leeren
-    while (Serial2.available()) Serial2.read();
-
-    state = KLINE_WAIT_SYNC;
+    initBitIndex = 0;
+    state = KLINE_SENDING_5BAUD;
     stateTimer = millis();
 }
 
@@ -104,19 +70,23 @@ bool KW1281Protocol::readBlock(uint8_t *buffer, uint8_t &length, uint8_t &title)
     if (!ok) return false;
     sendByteWithEchoCheck(~title);
 
-    uint8_t dataLen = (len >= 3) ? (len - 3) : 0;
+    if (len < 3) return false;
+    uint8_t dataLen = len - 3;
+    bool bufferOverflow = dataLen > MAX_BLOCK_DATA;
     for (uint8_t i = 0; i < dataLen; i++) {
         uint8_t b = readByteWithTimeout(500, &ok);
         if (!ok) return false;
         sendByteWithEchoCheck(~b);
-        buffer[i] = b;
+        if (i < MAX_BLOCK_DATA) {
+            buffer[i] = b;
+        }
     }
 
     uint8_t endByte = readByteWithTimeout(500, &ok);
     if (!ok || endByte != 0x03) return false;
 
-    length = dataLen;
-    return true;
+    length = bufferOverflow ? 0 : dataLen;
+    return !bufferOverflow;
 }
 
 void KW1281Protocol::sendBlock(const uint8_t *data, uint8_t length, uint8_t title) {
@@ -237,12 +207,32 @@ void KW1281Protocol::update(SensorData &data) {
             }
             break;
 
+        case KLINE_SENDING_5BAUD: {
+            static const uint8_t bits[10] = { 0, 1, 0, 0, 0, 0, 0, 0, 0, 1 };
+            const unsigned long bitDurationMs = 200;
+
+            if (initBitIndex < 10 && now - stateTimer >= bitDurationMs) {
+                digitalWrite(PIN_KLINE_TX, bits[initBitIndex] ? HIGH : LOW);
+                initBitIndex++;
+                stateTimer = now;
+            } else if (initBitIndex == 10 && now - stateTimer >= bitDurationMs) {
+                digitalWrite(PIN_KLINE_TX, HIGH);
+                initBitIndex++;
+                stateTimer = now;
+            } else if (initBitIndex == 11 && now - stateTimer >= 100) {
+                Serial2.begin(9600, SERIAL_8N1, PIN_KLINE_RX, PIN_KLINE_TX);
+                while (Serial2.available()) Serial2.read();
+                state = KLINE_WAIT_SYNC;
+                stateTimer = now;
+            }
+            break;
+        }
+
         case KLINE_WAIT_SYNC: {
-            bool ok;
-            uint8_t sync = readByteWithTimeout(3000, &ok);
-            if (ok && sync == 0x55) {
+            if (Serial2.available() && Serial2.read() == 0x55) {
                 Serial.println("[KW1281] Sync Byte 0x55 empfangen!");
                 state = KLINE_WAIT_KEYBYTES;
+                keyByteCount = 0;
                 stateTimer = now;
             } else if (now - stateTimer > 3500) {
                 Serial.println("[KW1281] Timeout beim Warten auf Sync Byte. Wiederhole...");
@@ -253,25 +243,36 @@ void KW1281Protocol::update(SensorData &data) {
         }
 
         case KLINE_WAIT_KEYBYTES: {
-            bool ok;
-            uint8_t kb1 = readByteWithTimeout(1000, &ok);
-            if (!ok) { state = KLINE_ERROR_WAIT; stateTimer = now; break; }
-            uint8_t kb2 = readByteWithTimeout(1000, &ok);
-            if (!ok) { state = KLINE_ERROR_WAIT; stateTimer = now; break; }
+            while (Serial2.available() && keyByteCount < 2) {
+                keyBytes[keyByteCount++] = Serial2.read();
+                stateTimer = now;
+            }
 
-            Serial.printf("[KW1281] Keybytes empfangen: 0x%02X 0x%02X\n", kb1, kb2);
-            // Sende invertiertes Keybyte 2 als Handshake
-            delay(30);
-            sendByteWithEchoCheck(~kb2);
-
-            state = KLINE_ACK_ECU_INFO;
-            stateTimer = now;
+            if (keyByteCount == 2) {
+                Serial.printf("[KW1281] Keybytes empfangen: 0x%02X 0x%02X\n",
+                              keyBytes[0], keyBytes[1]);
+                delay(30);
+                sendByteWithEchoCheck(~keyBytes[1]);
+                state = KLINE_ACK_ECU_INFO;
+                stateTimer = millis();
+            } else if (now - stateTimer > 1000) {
+                state = KLINE_ERROR_WAIT;
+                stateTimer = now;
+            }
             break;
         }
 
         case KLINE_ACK_ECU_INFO: {
             // Steuergerät sendet Identifikations-Strings (Titel 0xF6)
-            uint8_t buf[48];
+            if (!Serial2.available()) {
+                if (now - stateTimer > 4000) {
+                    state = KLINE_ERROR_WAIT;
+                    stateTimer = now;
+                }
+                break;
+            }
+
+            uint8_t buf[MAX_BLOCK_DATA];
             uint8_t len = 0;
             uint8_t title = 0;
             if (readBlock(buf, len, title)) {
@@ -299,9 +300,8 @@ void KW1281Protocol::update(SensorData &data) {
             unsigned long now2 = millis();
 
             // --- DTC-Löschung hat Priorität (wenn angefordert) ---
-            if (dtcClearRequested || data.dtcClearPending) {
+            if (data.dtcClearPending) {
                 Serial.println("[KW1281] Sende DTC-Löschanforderung (Titel 0x05)...");
-                dtcClearRequested = false;
                 data.dtcClearPending = false;
                 if (clearDTCs()) {
                     Serial.println("[KW1281] DTCs erfolgreich gelöscht.");
@@ -316,10 +316,9 @@ void KW1281Protocol::update(SensorData &data) {
             }
 
             // --- DTC-Auslesen (wenn angefordert oder periodisch alle 10s) ---
-            if (dtcReadRequested || data.dtcReadPending ||
+            if (data.dtcReadPending ||
                 (now2 - lastDtcCheckTime >= 10000 && lastDtcCheckTime > 0)) {
                 Serial.println("[KW1281] Lese Fehlercodes (Titel 0x07)...");
-                dtcReadRequested = false;
                 data.dtcReadPending = false;
                 lastDtcCheckTime = now2;
                 if (requestDTCs(data)) {
@@ -340,7 +339,7 @@ void KW1281Protocol::update(SensorData &data) {
             // --- Normaler Messwertblock-Zyklus (Gruppen 1-6) ---
             requestGroup(currentGroup);
             
-            uint8_t buf[48];
+            uint8_t buf[MAX_BLOCK_DATA];
             uint8_t len = 0;
             uint8_t title = 0;
             if (readBlock(buf, len, title)) {
@@ -382,7 +381,7 @@ bool KW1281Protocol::requestDTCs(SensorData &data) {
     // DTC-Leseanforderung senden: Titel 0x07 (Read DTC)
     sendBlock(nullptr, 0, 0x07);
 
-    uint8_t buf[48];
+    uint8_t buf[MAX_BLOCK_DATA];
     uint8_t len = 0;
     uint8_t title = 0;
 
@@ -431,7 +430,7 @@ bool KW1281Protocol::clearDTCs() {
     // DTC-Löschanforderung senden: Titel 0x05 (Clear DTC / Fehlerspeicher löschen)
     sendBlock(nullptr, 0, 0x05);
 
-    uint8_t buf[48];
+    uint8_t buf[MAX_BLOCK_DATA];
     uint8_t len = 0;
     uint8_t title = 0;
 

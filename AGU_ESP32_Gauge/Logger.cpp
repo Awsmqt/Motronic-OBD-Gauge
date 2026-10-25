@@ -101,11 +101,25 @@ bool DataLogger::begin() {
 // update() — Wird zyklisch aus loop() aufgerufen
 // ==============================================================================
 void DataLogger::update(const SensorData &data) {
-    if (!isReady()) return;
-
-    // Intervall-Prüfung
     uint32_t now = millis();
     if ((now - _lastWriteMs) < LOG_INTERVAL_MS) return;
+
+    if (!_sdMounted) return;
+    if (!_fileOpen) {
+        _logFile = SD.open(_currentFilename, FILE_APPEND);
+        if (!_logFile) {
+            Serial.println(F("[Logger] FEHLER: Log-Datei konnte nicht erneut geöffnet werden."));
+            _lastWriteMs = now;
+            return;
+        }
+        _fileOpen = true;
+        flush();
+        if (!_fileOpen) {
+            _lastWriteMs = now;
+            return;
+        }
+    }
+
     _lastWriteMs = now;
 
     // CSV-Zeile formatieren und in RAM-Puffer schreiben
@@ -133,21 +147,25 @@ void DataLogger::update(const SensorData &data) {
 void DataLogger::flush() {
     if (!_fileOpen || _bufferCount == 0) return;
 
-    size_t written = _logFile.print(_writeBuffer);
-    if (written == 0 && _writeBuffer.length() > 0) {
-        Serial.println(F("[Logger] WARNUNG: Schreibfehler auf SD-Karte!"));
-        // Versuch die Datei zu schliessen und neu zu öffnen
+    const size_t bufferLength = _writeBuffer.length();
+    const size_t written = _logFile.write(
+        (const uint8_t *)_writeBuffer.c_str(), bufferLength);
+    uint8_t completedLines = 0;
+    for (size_t i = 0; i < written; ++i) {
+        if (_writeBuffer[i] == '\n') completedLines++;
+    }
+    if (completedLines > _bufferCount) completedLines = _bufferCount;
+    _bufferCount -= completedLines;
+    if (written > 0) {
+        _writeBuffer.remove(0, written);
+    }
+
+    if (_writeBuffer.length() > 0) {
+        Serial.printf("[Logger] WARNUNG: SD-Schreibvorgang unvollständig (%u/%u Bytes); Puffer bleibt erhalten.\n",
+                      (unsigned)written, (unsigned)bufferLength);
         _logFile.close();
         _fileOpen = false;
-        _logFile = SD.open(_currentFilename, FILE_APPEND);
-        if (_logFile) {
-            _fileOpen = true;
-            // Erneuter Schreibversuch
-            _logFile.print(_writeBuffer);
-            Serial.println(F("[Logger] Datei neu geöffnet, Schreibversuch wiederholt."));
-        } else {
-            Serial.println(F("[Logger] FEHLER: Datei konnte nicht erneut geöffnet werden!"));
-        }
+        return;
     }
 
     _logFile.flush();
@@ -182,6 +200,10 @@ uint32_t DataLogger::getLogCount() const {
 bool DataLogger::startNewSession() {
     // Restlichen Puffer noch schreiben
     flush();
+    if (_bufferCount > 0 || _writeBuffer.length() > 0) {
+        Serial.println(F("[Logger] FEHLER: Session bleibt offen, bis der Log-Puffer geschrieben wurde."));
+        return false;
+    }
 
     // Aktuelle Datei schliessen
     if (_fileOpen) {

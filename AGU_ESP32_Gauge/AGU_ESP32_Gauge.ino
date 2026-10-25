@@ -52,7 +52,7 @@ void setup() {
 
     // Datenstruktur initialisieren
     memset(&telemetryData, 0, sizeof(SensorData));
-    telemetryData.currentTheme = THEME_HEALTH_GRID;
+    telemetryData.currentTheme = THEME_MEASUREMENTS;
     telemetryData.boostPeakBar = -1.0f;
     telemetryData.exhaustTempPeak = 0.0f;
     telemetryData.oilTempPeak = 0.0f;
@@ -113,6 +113,12 @@ void loop() {
         telemetryData.sdCardReady = logger.isReady();
         telemetryData.logLinesWritten = logger.getLogCount();
     }
+
+    #if !ENABLE_SIMULATION
+        if (kw1281.isSlowInitActive()) {
+            kw1281.update(telemetryData);
+        }
+    #endif
 
     // --------------------------------------------------------------------------
     // 2. SD-KARTEN DATENLOGGING (1 Hz / zyklisch in RAM-Puffer schreiben)
