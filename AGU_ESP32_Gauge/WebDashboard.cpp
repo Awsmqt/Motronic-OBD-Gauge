@@ -148,6 +148,7 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
   .btn.primary { background: var(--cyan); border-color: var(--cyan); color: #04202e; }
   .btn.primary:active { background: #7fd6ff; }
   .btn[disabled] { opacity: .4; pointer-events: none; }
+  .btn.selected { border-color: var(--cyan); color: var(--cyan); }
   .danger-zone { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line); }
   .danger-zone p { font-size: .78rem; color: var(--dim); line-height: 1.4; margin-bottom: 10px; }
   .btn.danger { width: 100%; background: transparent; border-color: rgba(255,59,48,.5); color: #ff6b61; }
@@ -290,8 +291,9 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
   <!-- DISPLAY -->
   <section class="pane" id="pane-display" role="tabpanel">
     <div class="panel pad">
-      <div class="actions">
-        <button class="btn" id="btnTheme" type="button">Nächstes Theme</button>
+      <div class="actions theme-choices">
+        <button class="btn" type="button" data-theme="0" aria-pressed="false">Mehr Messwerte</button>
+        <button class="btn" type="button" data-theme="1" aria-pressed="false">Motorzustand</button>
         <button class="btn" id="btnPeaks" type="button">Peak-Werte zurücksetzen</button>
       </div>
       <p class="hint" id="logInfo">SD-Karte: -- | Zeilen: --</p>
@@ -339,7 +341,14 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
     clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 1800);
   }
-  function post(url) { return fetch(url, { method: 'POST' }); }
+  function post(url, body) {
+    const options = { method: 'POST' };
+    if (body) {
+      options.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+      options.body = body;
+    }
+    return fetch(url, options);
+  }
   function setBar(id, pct) { $(id).style.width = clamp(pct) + '%'; }
   function setAlarm(id, on) { $(id).className = on ? 'tile alarm' : 'tile'; }
 
@@ -727,6 +736,11 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         if (data.sim) { b.className = 'badge warn'; $('badgeText').textContent = 'SIMULATION'; }
         else if (data.kline) { b.className = 'badge'; $('badgeText').textContent = 'KW1281 OK'; }
         else { b.className = 'badge warn'; $('badgeText').textContent = 'K-LINE OFFLINE'; }
+        $$('[data-theme]').forEach(button => {
+          const selected = Number(button.dataset.theme) === data.theme;
+          button.classList.toggle('selected', selected);
+          button.setAttribute('aria-pressed', String(selected));
+        });
 
         // 1. Ladedruck
         $('valBoost').innerText = data.boost.toFixed(2);
@@ -836,7 +850,9 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
   });
 
   $('btnPeaks').addEventListener('click', () => { post('/api/peaks/reset').then(() => { fetchTelemetry(); toast('Peak-Werte zurückgesetzt'); }); });
-  $('btnTheme').addEventListener('click', () => { post('/api/theme'); });
+  $$('[data-theme]').forEach(button => button.addEventListener('click', () => {
+    post('/api/theme', 'theme=' + button.dataset.theme);
+  }));
 
   // 4 Hz Aktualisierungsrate (alle 250ms)
   setInterval(fetchTelemetry, 250);
@@ -848,8 +864,7 @@ static const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
 WebDashboard::WebDashboard()
     : server(WEB_SERVER_PORT),
-      currentData(nullptr),
-      lastClientCheck(0) {
+      currentData(nullptr) {
 }
 
 void WebDashboard::begin() {
@@ -875,7 +890,7 @@ void WebDashboard::setupRoutes() {
     server.on("/api/dtc/read", HTTP_POST, [this]() { handleDtcRead(); });
     server.on("/api/dtc/clear", HTTP_POST, [this]() { handleDtcClear(); });
     server.on("/api/peaks/reset", HTTP_POST, [this]() { handlePeakReset(); });
-    server.on("/api/theme", HTTP_POST, [this]() { handleThemeSwitch(); });
+    server.on("/api/theme", HTTP_POST, [this]() { handleThemeSelect(); });
 
     server.onNotFound([this]() {
         server.send(404, "text/plain", "Not Found");
@@ -928,7 +943,7 @@ void WebDashboard::handleApiData() {
         "\"alarmBoost\":%s,\"alarmOilP\":%s,\"alarmOilT\":%s,\"alarmCool\":%s,\"alarmIat\":%s,\"alarmEgt\":%s,\"alarmBatt\":%s,"
         "\"sdReady\":%s,\"logLines\":%lu,"
         "\"sim\":%s,\"dtcAgeMs\":%ld,\"dtcReading\":%s,"
-        "\"rpm\":%d,\"load\":%.1f,\"status\":%u,\"ms\":%lu,\"pk\":%lu,"
+        "\"rpm\":%d,\"load\":%.1f,\"status\":%u,\"ms\":%lu,\"pk\":%lu,\"theme\":%u,"
         "\"dtcs\":",
         currentData->boostBar, currentData->boostPeakBar,
         currentData->oilPressureBar, currentData->oilPressureMinBar,
@@ -957,7 +972,8 @@ void WebDashboard::handleApiData() {
         // Tuner-Export: Drehzahl, Last, Statusbits, Gerätezeit (ms) und ECU-Paketzähler
         // (Paketzähler steigt nur bei neuen K-Line-Daten -> wiederholte Werte erkennbar)
         currentData->ecuRpm, currentData->ecuEngineLoadPct, (unsigned)currentData->ecuStatusBits,
-        (unsigned long)millis(), (unsigned long)currentData->klinePackets
+        (unsigned long)millis(), (unsigned long)currentData->klinePackets,
+        (unsigned)currentData->currentTheme
     );
 
     String body = json;
@@ -990,13 +1006,20 @@ void WebDashboard::handlePeakReset() {
     server.send(200, "application/json", "{\"status\":\"peaks_reset\"}");
 }
 
-void WebDashboard::handleThemeSwitch() {
-    if (currentData) {
-        int next = (int)currentData->currentTheme + 1;
-        if (next >= THEME_COUNT) next = 0;
-        currentData->currentTheme = (DisplayTheme)next;
+void WebDashboard::handleThemeSelect() {
+    if (!currentData || !server.hasArg("theme")) {
+        server.send(400, "application/json", "{\"error\":\"theme must be 0 or 1\"}");
+        return;
     }
-    server.send(200, "application/json", "{\"status\":\"theme_switched\"}");
+
+    const String requestedTheme = server.arg("theme");
+    if (requestedTheme != "0" && requestedTheme != "1") {
+        server.send(400, "application/json", "{\"error\":\"theme must be 0 or 1\"}");
+        return;
+    }
+
+    currentData->currentTheme = (DisplayTheme)requestedTheme.toInt();
+    server.send(200, "application/json", "{\"status\":\"theme_selected\"}");
 }
 
 void WebDashboard::update(SensorData &data) {

@@ -18,7 +18,6 @@ private:
     float filteredOilPressureBar;
     float filteredChargeAirTemp;
     float filteredOilTemp;
-    bool  sensorInitOk;
 
     float readMapSensorPressure();
     float readOilPressure();

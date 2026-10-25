@@ -7,8 +7,7 @@ SensorManager::SensorManager()
       filteredBoostBar(0.0f),
       filteredOilPressureBar(0.0f),
       filteredChargeAirTemp(20.0f),
-      filteredOilTemp(20.0f),
-      sensorInitOk(false) {
+      filteredOilTemp(20.0f) {
 }
 
 void SensorManager::begin() {
@@ -24,7 +23,6 @@ void SensorManager::begin() {
     // MAX31855 Thermoelement-Verstärker (SPI)
     thermocouple = new Adafruit_MAX31855(PIN_EGT_CLK, PIN_EGT_CS, PIN_EGT_DO);
     if (thermocouple->begin()) {
-        sensorInitOk = true;
         Serial.println("[Sensors] MAX31855 EGT Sensor bereit.");
     } else {
         Serial.println("[Sensors] WARNUNG: MAX31855 nicht erkannt!");

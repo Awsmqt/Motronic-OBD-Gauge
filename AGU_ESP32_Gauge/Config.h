@@ -38,7 +38,6 @@
 
 // 7. CYD Touchscreen (XPT2046 Controller)
 #define PIN_TOUCH_CS          33    // SPI Chip Select für Touch
-#define PIN_TOUCH_IRQ         36    // (Optionaler IRQ)
 
 // ==============================================================================
 // SENSOR-KALIBRIERUNG
@@ -98,17 +97,12 @@
 #define ALARM_BATTERY_HIGH        15.0f // Überspannung / Regler defekt
 
 // ==============================================================================
-// DISPLAY THEMES (MOTOR-VITALDATEN FOKUSSIERT)
+// DISPLAY-ANSICHTEN
 // ==============================================================================
 enum DisplayTheme {
-    THEME_HEALTH_GRID = 0,    // 6-Kachel Übersicht: 2 Drücke + 4 Temperaturen + Volt
-    THEME_PRESSURE_TEMP = 1,  // Große Drücke oben (Ladedruck/Öldruck) & 4 Temp-Balken unten
-    THEME_OEM_VDO = 2,        // Golf 4 VDO Look (Ladedruck & Öldruck Runduhren, MFA Temp-Center)
-    THEME_MONITOR_MATRIX = 3, // Live Status-Matrix mit Alarmschwellen-Balken & Min/Max
-    THEME_DTC_DIAG = 4,       // Fehlercode-Diagnose (DTC Auslesen / Löschen)
-    THEME_TREND_CHART = 5,    // Verlaufsdiagramm (Temperatur-Trends über 60s)
-    THEME_ECU_LIVE = 6,       // ECU Live-Daten (Lambda, Einspritzung, Zündung)
-    THEME_COUNT = 7
+    THEME_MEASUREMENTS = 0,
+    THEME_HEALTH = 1,
+    THEME_COUNT = 2
 };
 
 // ==============================================================================
